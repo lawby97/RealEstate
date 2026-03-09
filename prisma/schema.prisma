@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                 String    @id @default(cuid())
+  email              String    @unique
+  name               String? // display name; for new users = firstName + " " + lastName
+  firstName          String?
+  lastName           String?
+  password           String? // hashed; only for email/password sign-in
+  emailVerified      DateTime?
+  image              String?
+  // Onboarding (set after signup)
+  age                Int? // 18–120
+  investorType       String? // first_time_buyer | small_investor | experienced_investor | institutional
+  investmentGoal     String? // cash_flow | appreciation | both
+  investmentTimeline String? // within_6_months | 6_12_months | exploring
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  accounts      Account[]
+  sessions      Session[]
+  savedLists    SavedList[]
+  subscriptions Subscription[]
+  properties    UserProperty[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── Listings (from API / realtor.ca style) ─────────────────────────────────
+model Area {
+  id                     String   @id @default(cuid())
+  city                   String
+  province               String
+  appreciationRateAnnual Float // e.g. 5.2 = 5.2% per year
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  listings Listing[]
+
+  @@unique([city, province])
+}
+
+model Listing {
+  id           String   @id @default(cuid())
+  externalId   String   @unique // ID from source (e.g. DDF/MLS)
+  source       String   @default("realtor_ca")
+  address      String
+  city         String
+  province     String
+  postalCode   String?
+  latitude     Float?
+  longitude    Float?
+  price        Float
+  currency     String   @default("CAD")
+  propertyType String // Single Family, Multi-Family, Condo, etc.
+  units        Int      @default(1) // number of units (1 = SFR, 2+ = multi)
+  bedrooms     Int?
+  bathrooms    Float?
+  squareFeet   Float?
+  lotSizeSqFt  Float?
+  yearBuilt    Int?
+  description  String?
+  photoUrls    String? // JSON array of URLs
+  listingUrl   String?
+  rawJson      String? // full payload for debugging
+  lastSeenAt   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  areaId       String?
+
+  area         Area?                 @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  evaluation   ListingEvaluation?
+  listItems    SavedListItem[]
+  priceHistory ListingPriceHistory[]
+}
+
+// Cache price snapshots so we can show how prices evolve over time
+model ListingPriceHistory {
+  id         String   @id @default(cuid())
+  listingId  String
+  price      Float
+  recordedAt DateTime @default(now())
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId, recordedAt])
+}
+
+// Investor evaluation (cashflow + equity growth)
+model ListingEvaluation {
+  id                String   @id @default(cuid())
+  listingId         String   @unique
+  cashflowScore     Float // e.g. 0–100
+  equityGrowthScore Float // 0–100
+  combinedScore     Float // weighted for "best for investors"
+  cashflowNotes     String?
+  equityNotes       String?
+  computedAt        DateTime @default(now())
+
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+// User-created saved lists (e.g. "Toronto triplexes", "Under 500k")
+model SavedList {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items SavedListItem[]
+}
+
+model SavedListItem {
+  id          String   @id @default(cuid())
+  savedListId String
+  listingId   String
+  addedAt     DateTime @default(now())
+  note        String?
+
+  savedList SavedList @relation(fields: [savedListId], references: [id], onDelete: Cascade)
+  listing   Listing   @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([savedListId, listingId])
+}
+
+// Subscription (Stripe) for paid access to "best" listings
+model Subscription {
+  id                   String    @id @default(cuid())
+  userId               String    @unique
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  status               String // active, canceled, past_due, etc.
+  priceId              String?
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// User's owned properties (for non–first-time buyers onboarding)
+model UserProperty {
+  id            String    @id @default(cuid())
+  userId        String
+  address       String
+  city          String
+  province      String
+  postalCode    String?
+  propertyType  String // e.g. Single Family, Condo, Multi-Family
+  units         Int       @default(1)
+  bedrooms      Int?
+  bathrooms     Float?
+  squareFeet    Float?
+  lotSizeSqFt   Float?
+  yearBuilt     Int?
+  purchasePrice Float?
+  purchaseDate  DateTime?
+  currentValue  Float?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

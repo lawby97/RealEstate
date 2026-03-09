@@ -1,0 +1,16 @@
+{
+  "listings": [
+    {
+      "Id": "sample-1",
+      "Address": { "AddressText": "123 Example St" },
+      "City": "Montreal",
+      "Province": "QC",
+      "PostalCode": "H2X 1Y1",
+      "Price": 450000,
+      "Property": { "Type": "Single Family", "Bedrooms": 3, "BathroomTotal": 2, "SizeInterior": 1200 },
+      "Building": {},
+      "PublicRemarks": "Sample listing. Replace with real data from Apify.",
+      "RelativeDetailsURL": "/real-estate/example"
+    }
+  ]
+}
