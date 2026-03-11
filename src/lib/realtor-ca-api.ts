@@ -7,6 +7,8 @@
  * a browser-based scraper or a service like Apify.
  */
 
+import { parseUnitBedroomMix } from "./quebec-unit-mix";
+
 const BASE_URL = "https://api37.realtor.ca/Listing.svc";
 
 export type RealtorCaSearchParams = {
@@ -67,6 +69,96 @@ export type RealtorCaSearchResult = {
   Paging?: { TotalRecords?: number; RecordsPerPage?: number; CurrentPage?: number };
   [key: string]: unknown;
 };
+
+function inferUnitsFromPropertyType(propertyType: string): number | null {
+  const value = propertyType.toLowerCase();
+  if (value.includes("duplex")) return 2;
+  if (value.includes("triplex")) return 3;
+  if (value.includes("fourplex") || value.includes("quadplex") || value.includes("quadruplex")) return 4;
+  return null;
+}
+
+function inferUnitsFromText(text: string): number | null {
+  const normalized = text.toLowerCase();
+  const match = normalized.match(/(\d+|one|two|three|four|five|six|seven|eight|nine|ten)[-\s]plex\b/);
+  if (!match) return null;
+  const token = match[1];
+  const numeric = Number(token);
+  if (Number.isFinite(numeric)) return numeric;
+
+  const words: Record<string, number> = {
+    one: 1,
+    two: 2,
+    three: 3,
+    four: 4,
+    five: 5,
+    six: 6,
+    seven: 7,
+    eight: 8,
+    nine: 9,
+    ten: 10,
+  };
+  return words[token] ?? null;
+}
+
+function inferUnits(raw: Record<string, unknown>, propertyType: string, description: string | null): number {
+  const prop = (raw.Property ?? raw.property ?? {}) as Record<string, unknown>;
+  const building = (raw.Building ?? raw.building ?? {}) as Record<string, unknown>;
+  const direct =
+    raw.units ?? raw.Units ?? raw.numberOfUnits ?? raw.unitCount ??
+    prop.Units ?? prop.units ?? prop.UnitTotal ?? prop.unit_total ??
+    building.Units ?? building.units ?? building.UnitTotal ?? building.unit_total;
+  const parsedDirect = direct != null ? Number(direct) : null;
+  if (parsedDirect != null && Number.isFinite(parsedDirect) && parsedDirect > 0) return parsedDirect;
+
+  const fromType = inferUnitsFromPropertyType(propertyType);
+  if (fromType) return fromType;
+
+  const parsedMix = parseUnitBedroomMix([description, JSON.stringify(raw)].filter(Boolean).join(" "), 1);
+  if (parsedMix?.sampleUnitCount && parsedMix.sampleUnitCount > 1) return parsedMix.sampleUnitCount;
+
+  const fromText = inferUnitsFromText([propertyType, description ?? ""].join(" "));
+  if (fromText) return fromText;
+
+  return 1;
+}
+
+function propertyTypeSpecificityScore(value: string): number {
+  const normalized = value.toLowerCase();
+  if (!normalized || normalized === "unknown") return 0;
+  if (/duplex|triplex|fourplex|quadplex|quadruplex|multiplex|multi-family|multifamily/.test(normalized)) return 5;
+  if (/apartment|walk-up|low-rise|high-rise/.test(normalized)) return 4;
+  if (/condo|condominium|strata/.test(normalized)) return 4;
+  if (/townhouse|row /i.test(normalized)) return 3;
+  if (/single family|house|residential/.test(normalized)) return 1;
+  return 2;
+}
+
+function resolvePropertyType(raw: Record<string, unknown>, prop: Record<string, unknown>, building: Record<string, unknown>): string {
+  const ownershipType = String(
+    raw.OwnershipType ??
+    raw.ownershipType ??
+    prop.OwnershipType ??
+    prop.ownership_type ??
+    building.OwnershipType ??
+    building.ownership_type ??
+    ""
+  ).trim();
+  const propertyTypeCandidates = [
+    String(building.Type ?? building.type ?? "").trim(),
+    String(prop.Type ?? prop.type ?? "").trim(),
+    String(raw.propertyType ?? raw.type ?? "").trim(),
+  ].filter(Boolean);
+
+  if (/condominium|condo|strata/i.test(ownershipType)) {
+    const condoSpecific = propertyTypeCandidates.find((candidate) => /townhouse|apartment|condo|condominium/i.test(candidate));
+    return condoSpecific || "Condo";
+  }
+
+  return propertyTypeCandidates.sort(
+    (left, right) => propertyTypeSpecificityScore(right) - propertyTypeSpecificityScore(left)
+  )[0] ?? "Unknown";
+}
 
 /**
  * Build form body for PropertySearch_Post.
@@ -159,11 +251,11 @@ export function mapRealtorCaListing(raw: RealtorCaListing | Record<string, unkno
   const r = raw as Record<string, unknown>;
   const prop = (r.Property ?? r.property ?? {}) as Record<string, unknown>;
   const building = (r.Building ?? r.building ?? {}) as Record<string, unknown>;
-  const propAddr = (prop.address ?? r.address) as Record<string, unknown> | string | undefined;
+  const propAddr = (prop.Address ?? prop.address ?? r.address) as Record<string, unknown> | string | undefined;
   const addrObj = (r.Address ?? r.address) as Record<string, unknown> | string | undefined;
   const addrStr =
-    typeof propAddr === "object" && propAddr?.address_text
-      ? String(propAddr.address_text)
+    typeof propAddr === "object" && propAddr
+      ? String((propAddr.AddressText ?? propAddr.address_text ?? propAddr.address ?? "") as string)
       : typeof addrObj === "string"
         ? addrObj
         : addrObj
@@ -177,18 +269,32 @@ export function mapRealtorCaListing(raw: RealtorCaListing | Record<string, unkno
     const match = last.match(/^([^,]+),/);
     city = match ? match[1].trim() : last.split(/\s+[A-Z]{2}\s+/)[0]?.trim() ?? "Unknown";
   }
+  if (city && city.includes("(")) city = city.split("(")[0].trim();
+  if (city) city = city.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   if (!city) city = "Unknown";
-  const provRaw = String(r.Province ?? r.province ?? r.province_name ?? r.state ?? "").trim();
+  const provRaw = String(r.Province ?? r.ProvinceName ?? r.province ?? r.province_name ?? r.state ?? "").trim();
   const provinceMap: Record<string, string> = { Quebec: "QC", Ontario: "ON", "British Columbia": "BC", Alberta: "AB", Manitoba: "MB", Saskatchewan: "SK", "Nova Scotia": "NS", "New Brunswick": "NB", "Newfoundland and Labrador": "NL", PEI: "PE", "Prince Edward Island": "PE" };
   const province = provinceMap[provRaw] ?? (provRaw || "ON");
   const postalCode = (r.PostalCode ?? r.postalCode ?? r.postal_code ?? ""); const postal = (postalCode != null && postalCode !== "") ? String(postalCode).trim() : null;
-  const latRaw = r.Latitude ?? r.latitude ?? propAddr && typeof propAddr === "object" ? (propAddr as Record<string, unknown>).latitude : null;
-  const lngRaw = r.Longitude ?? r.longitude ?? propAddr && typeof propAddr === "object" ? (propAddr as Record<string, unknown>).longitude : null;
+  const latRaw =
+    r.Latitude ?? r.latitude ??
+    (propAddr && typeof propAddr === "object"
+      ? ((propAddr as Record<string, unknown>).Latitude ?? (propAddr as Record<string, unknown>).latitude)
+      : null);
+  const lngRaw =
+    r.Longitude ?? r.longitude ??
+    (propAddr && typeof propAddr === "object"
+      ? ((propAddr as Record<string, unknown>).Longitude ?? (propAddr as Record<string, unknown>).longitude)
+      : null);
   const lat = latRaw != null ? (typeof latRaw === "number" ? latRaw : parseFloat(String(latRaw))) : null;
   const lng = lngRaw != null ? (typeof lngRaw === "number" ? lngRaw : parseFloat(String(lngRaw))) : null;
   let price = Number(r.Price ?? r.price ?? r.listPrice ?? 0);
   if ((!price || Number.isNaN(price)) && prop) {
-    const pv = (prop as Record<string, unknown>).price_unformatted_value ?? (prop as Record<string, unknown>).price;
+    const pv =
+      (prop as Record<string, unknown>).PriceUnformattedValue ??
+      (prop as Record<string, unknown>).price_unformatted_value ??
+      (prop as Record<string, unknown>).Price ??
+      (prop as Record<string, unknown>).price;
     if (typeof pv === "number") price = pv;
     else if (typeof pv === "string") price = parseInt(pv.replace(/\D/g, ""), 10) || 0;
   }
@@ -205,13 +311,20 @@ export function mapRealtorCaListing(raw: RealtorCaListing | Record<string, unkno
   const sq = sqRaw != null ? Number(sqRaw) : null;
   const lotSizeSqFt = (prop.SizeExterior != null ? Number(prop.SizeExterior) : (r.lotSizeSqFt ?? r.lotSize) != null ? Number(r.lotSizeSqFt ?? r.lotSize) : null);
   const yearBuilt = prop.YearBuilt != null ? Number(prop.YearBuilt) : building.ConstructedDate ? parseInt(String(building.ConstructedDate).slice(0, 4), 10) : (r.yearBuilt != null ? Number(r.yearBuilt) : null);
-  const propertyType = String(prop.Type ?? prop.type ?? building.Type ?? building.type ?? r.propertyType ?? r.type ?? "Unknown").trim() || "Unknown";
+  const propertyType = resolvePropertyType(r, prop, building);
   const description = (r.PublicRemarks ?? r.public_remarks ?? r.publicRemarks ?? r.description ?? r.remarks ?? ""); const desc = (description != null && description !== "") ? String(description).trim() : null;
+  const units = inferUnits(r, propertyType, desc);
+  const parsedMix = parseUnitBedroomMix([desc, JSON.stringify(raw)].filter(Boolean).join(" "), units);
   let photoArr: string[] = [];
   const listingPhoto = r.Listing as Record<string, unknown> | undefined;
   if (listingPhoto?.Photo) {
     const photos = listingPhoto.Photo as Array<{ Medias?: Array<{ Url?: string }> }>;
     photoArr = photos?.flatMap((p) => p.Medias ?? []).map((m) => m.Url).filter(Boolean) as string[] ?? [];
+  }
+  if (photoArr.length === 0 && Array.isArray(prop.Photo)) {
+    photoArr = (prop.Photo as Array<{ HighResPath?: string; MedResPath?: string; LowResPath?: string; Url?: string }>)
+      .map((p) => p.HighResPath ?? p.MedResPath ?? p.LowResPath ?? p.Url)
+      .filter(Boolean) as string[];
   }
   if (photoArr.length === 0 && Array.isArray(prop.photo)) {
     photoArr = (prop.photo as Array<{ high_res_path?: string; low_res_path?: string; Url?: string }>).map((p) => p.high_res_path ?? p.low_res_path ?? p.Url).filter(Boolean) as string[];
@@ -234,8 +347,13 @@ export function mapRealtorCaListing(raw: RealtorCaListing | Record<string, unkno
     price,
     currency: "CAD",
     propertyType,
-    units: 1,
-    bedrooms: bedrooms != null && !Number.isNaN(bedrooms) ? bedrooms : null,
+    units,
+    bedrooms:
+      bedrooms != null && !Number.isNaN(bedrooms)
+        ? bedrooms
+        : parsedMix?.isComplete
+          ? parsedMix.totalBedrooms
+          : null,
     bathrooms: bathrooms != null && !Number.isNaN(bathrooms) ? bathrooms : null,
     squareFeet: sq != null && !Number.isNaN(sq) ? sq : null,
     lotSizeSqFt: lotSizeSqFt != null && !Number.isNaN(Number(lotSizeSqFt)) ? Number(lotSizeSqFt) : null,

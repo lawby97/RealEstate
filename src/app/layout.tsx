@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
-
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Investor Listings",
@@ -17,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className} style={{ backgroundColor: "#f8fafc", color: "#1e293b" }}>
+      <body style={{ backgroundColor: "#f8fafc", color: "#1e293b" }}>
         <Providers>{children}</Providers>
       </body>
     </html>

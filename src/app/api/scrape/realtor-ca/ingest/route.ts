@@ -43,12 +43,20 @@ export async function POST(req: NextRequest) {
         const mapped = mapRealtorCaListing(raw);
         const listing = await prisma.listing.upsert({
           where: { externalId: mapped.externalId },
-          create: mapped,
+          create: {
+            ...mapped,
+            isLinkActive: null,
+            linkCheckedAt: null,
+            linkStatusCode: null,
+            linkStatusNote: null,
+          },
           update: {
             price: mapped.price,
             address: mapped.address,
             city: mapped.city,
             province: mapped.province,
+            propertyType: mapped.propertyType,
+            units: mapped.units,
             postalCode: mapped.postalCode,
             latitude: mapped.latitude,
             longitude: mapped.longitude,
@@ -61,6 +69,10 @@ export async function POST(req: NextRequest) {
             photoUrls: mapped.photoUrls,
             listingUrl: mapped.listingUrl,
             lastSeenAt: new Date(),
+            isLinkActive: null,
+            linkCheckedAt: null,
+            linkStatusCode: null,
+            linkStatusNote: null,
             rawJson: mapped.rawJson,
           },
         });

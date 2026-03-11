@@ -29,6 +29,16 @@ function SignInForm() {
         setLoading(false);
         return;
       }
+      if (res?.ok) {
+        const profileRes = await fetch("/api/profile");
+        if (profileRes.ok) {
+          const profile = await profileRes.json();
+          if (profile?.onboardingRequired) {
+            window.location.href = "/profile?onboarding=1";
+            return;
+          }
+        }
+      }
       if (res?.url) window.location.href = res.url;
     } catch {
       setError("Something went wrong.");

@@ -73,7 +73,7 @@ export function Sidebar() {
 
       <div style={{ padding: "16px 12px" }}>
         <Link
-          href="/signin"
+          href={session ? "/profile" : "/signin"}
           style={{
             display: "flex",
             alignItems: "center",
@@ -129,7 +129,7 @@ export function Sidebar() {
             }}
           >
             <Home size={20} strokeWidth={2} />
-            Properties
+            My properties
           </Link>
           <Link
             href="/market"

@@ -21,6 +21,22 @@ model User {
   investorType       String? // first_time_buyer | small_investor | experienced_investor | institutional
   investmentGoal     String? // cash_flow | appreciation | both
   investmentTimeline String? // within_6_months | 6_12_months | exploring
+  firstPropertyBuyer Boolean?
+  willLiveThere      Boolean?
+  preferredAssetBand String? // one_to_four_units | five_plus_units | flexible
+  preferredDealStage String? // existing | new_construction | either
+  plansRenovations   Boolean?
+  averageManagementFeePct Float?
+  insuranceDefaultBasis   String? // percent_of_egi | annual_total | annual_per_unit | annual_per_sqft
+  insuranceDefaultValue   Float?
+  repairsDefaultBasis     String? // percent_of_egi | annual_total | annual_per_unit | annual_per_sqft
+  repairsDefaultValue     Float?
+  utilitiesDefaultBasis   String? // percent_of_egi | annual_total | annual_per_unit | annual_per_sqft
+  utilitiesDefaultValue   Float?
+  snowDefaultBasis        String? // percent_of_egi | annual_total | annual_per_unit | annual_per_sqft
+  snowDefaultValue        Float?
+  onboardingCompletedAt DateTime?
+  onboardingSkippedAt   DateTime?
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
 
@@ -103,6 +119,10 @@ model Listing {
   description  String?
   photoUrls    String? // JSON array of URLs
   listingUrl   String?
+  isLinkActive Boolean?
+  linkCheckedAt DateTime?
+  linkStatusCode Int?
+  linkStatusNote String?
   rawJson      String? // full payload for debugging
   lastSeenAt   DateTime @default(now())
   createdAt    DateTime @default(now())
@@ -113,6 +133,128 @@ model Listing {
   evaluation   ListingEvaluation?
   listItems    SavedListItem[]
   priceHistory ListingPriceHistory[]
+  profile      ListingProfile?
+}
+
+// Normalized property profile for strategy engine (canonical; user does not edit)
+model ListingProfile {
+  id                     String   @id @default(cuid())
+  listingId              String   @unique
+  normalizedAssetType    String
+  normalizedUnits        Int
+  assetTypeConfidence    String
+  unitsConfidence        String
+  residentialUseCategory String
+  residentialShareEstimated Float?
+  redevelopmentCandidate Boolean @default(false)
+  strategyEligibilityFlags String?
+  normalizationNotes     String?
+  normalizationVersion   String   @default("1")
+  reviewStatus           String   @default("auto")
+  provenanceByField      String?
+  marketCityId           String?
+  marketZoneId           String?
+  zoneMatchMethod        String?
+  zoneMatchConfidence    Float?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  listing    Listing     @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  marketCity MarketCity?  @relation(fields: [marketCityId], references: [id], onDelete: SetNull)
+  marketZone MarketZone?  @relation(fields: [marketZoneId], references: [id], onDelete: SetNull)
+}
+
+// ─── CMHC Rent Market Report – market data layer ─────────────────────────────
+model MarketCity {
+  id                String   @id @default(cuid())
+  city              String
+  province          String
+  normalizedCityName String
+  cmhcMarketName    String?
+  datasetSlug       String?
+  datasetYear       Int?
+  datasetVersion    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  zones         MarketZone[]
+  metrics       MarketMetric[]
+  postalMaps    MarketPostalZoneMap[]
+  listingProfiles ListingProfile[]
+
+  @@unique([city, province])
+}
+
+model MarketZone {
+  id             String   @id @default(cuid())
+  marketCityId   String
+  zoneCode       String
+  zoneLabel      String
+  zoneDisplayName String?
+  zoneOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  marketCity   MarketCity   @relation(fields: [marketCityId], references: [id], onDelete: Cascade)
+  metrics      MarketMetric[]
+  postalMaps   MarketPostalZoneMap[]
+  listingProfiles ListingProfile[]
+
+  @@unique([marketCityId, zoneCode])
+}
+
+model MarketPostalZoneMap {
+  id           String   @id @default(cuid())
+  marketCityId String
+  postalCode   String?
+  postalFsa    String
+  zoneId       String
+  confidence   Float    @default(1)
+  source       String
+  isExact      Boolean  @default(false)
+  notes        String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  marketCity MarketCity @relation(fields: [marketCityId], references: [id], onDelete: Cascade)
+  zone       MarketZone @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@index([marketCityId, postalFsa])
+  @@index([marketCityId, postalCode])
+}
+
+model MarketMetricSource {
+  id            String   @id @default(cuid())
+  workbookFile  String
+  worksheetName String
+  tableNumber   String?
+  city          String?
+  importedAt    DateTime @default(now())
+  parserVersion String   @default("1")
+}
+
+model MarketMetric {
+  id                  String   @id @default(cuid())
+  marketCityId        String
+  zoneId              String?
+  metricType          String
+  assetClass          String
+  bedroomType         String
+  structureSizeBucket String?
+  yearBuiltBucket     String?
+  value               Float?
+  surveyYear          Int
+  sourceSheet         String?
+  sourceTable         String?
+  qualityFlag         String?
+  suppressionFlag     Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  marketCity MarketCity  @relation(fields: [marketCityId], references: [id], onDelete: Cascade)
+  zone       MarketZone? @relation(fields: [zoneId], references: [id], onDelete: Cascade)
+
+  @@index([marketCityId, zoneId, metricType, assetClass, bedroomType])
 }
 
 // Cache price snapshots so we can show how prices evolve over time

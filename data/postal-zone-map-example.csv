@@ -1,0 +1,9 @@
+city,province,postal_or_fsa,zone_code,is_exact
+Toronto,ON,M5V,3,0
+Toronto,ON,M4Y,3,0
+Toronto,ON,M5A,3,0
+Toronto,ON,L5B,1,0
+Montreal,QC,H2Y,1,0
+Montreal,QC,H3B,1,0
+Calgary,AB,T2P,1,0
+Vancouver,BC,V6C,3,0

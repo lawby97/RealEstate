@@ -1,21 +1,29 @@
 import { prisma } from "@/lib/prisma";
+import { buildActiveListingWhere, refreshListingActivityCache } from "@/lib/listing-activity";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
+  await refreshListingActivityCache();
+  const activeWhere = buildActiveListingWhere();
+
   const [total, topDeals, highScore80, highScore90, avgResult, sumResult] = await Promise.all([
-    prisma.listing.count(),
+    prisma.listing.count({ where: activeWhere }),
     prisma.listing.count({
-      where: { evaluation: { combinedScore: { gte: 80 } } },
+      where: { ...activeWhere, evaluation: { combinedScore: { gte: 80 } } },
     }),
     prisma.listing.count({
-      where: { evaluation: { combinedScore: { gte: 80 } } },
+      where: { ...activeWhere, evaluation: { combinedScore: { gte: 80 } } },
     }),
     prisma.listing.count({
-      where: { evaluation: { combinedScore: { gte: 90 } } },
+      where: { ...activeWhere, evaluation: { combinedScore: { gte: 90 } } },
     }),
     prisma.listingEvaluation.aggregate({
+      where: { listing: activeWhere },
       _avg: { combinedScore: true },
     }),
     prisma.listing.aggregate({
+      where: activeWhere,
       _sum: { price: true },
     }),
   ]);

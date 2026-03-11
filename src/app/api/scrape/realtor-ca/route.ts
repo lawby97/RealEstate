@@ -85,7 +85,13 @@ export async function POST(req: NextRequest) {
       const mapped = mapRealtorCaListing(raw);
       const listing = await prisma.listing.upsert({
         where: { externalId: mapped.externalId },
-        create: mapped,
+        create: {
+          ...mapped,
+          isLinkActive: null,
+          linkCheckedAt: null,
+          linkStatusCode: null,
+          linkStatusNote: null,
+        },
         update: {
           price: mapped.price,
           address: mapped.address,
@@ -103,6 +109,10 @@ export async function POST(req: NextRequest) {
           photoUrls: mapped.photoUrls,
           listingUrl: mapped.listingUrl,
           lastSeenAt: new Date(),
+          isLinkActive: null,
+          linkCheckedAt: null,
+          linkStatusCode: null,
+          linkStatusNote: null,
           rawJson: mapped.rawJson,
         },
       });

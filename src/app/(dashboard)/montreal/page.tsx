@@ -15,6 +15,7 @@ type Listing = {
   bedrooms: number | null;
   bathrooms: number | null;
   listingUrl: string | null;
+  source: string;
   photoUrls: string | null;
   evaluation: { combinedScore: number; cashflowScore: number; equityGrowthScore: number } | null;
 };
@@ -43,7 +44,7 @@ export default function MontrealPage() {
 
   useEffect(() => {
     const params = new URLSearchParams();
-    params.set("city", "Montreal");
+    params.set("market", "Montreal");
     params.set("limit", "100");
     fetch(`${base}/api/listings?${params}`)
       .then((r) => r.json())
@@ -110,10 +111,10 @@ export default function MontrealPage() {
         }}
       >
         <h1 style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>
-          Montreal listings
+          Montreal market listings
         </h1>
         <p style={{ color: "#64748b", margin: "4px 0 0 0" }}>
-          Saved listings in Montreal and a preview of data from Realtor.ca
+          Saved listings in the Montreal market, including nearby municipalities returned by the live feed
         </p>
       </header>
 
@@ -218,7 +219,7 @@ export default function MontrealPage() {
       {/* Saved Montreal listings from DB */}
       <section>
         <h2 style={{ fontSize: 18, fontWeight: 600, margin: "0 0 12px 0" }}>
-          Montreal listings in your database
+          Montreal market listings in your database
         </h2>
         {loading ? (
           <p style={{ color: "#64748b" }}>Loading…</p>
