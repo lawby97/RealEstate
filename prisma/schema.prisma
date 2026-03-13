@@ -101,6 +101,7 @@ model Listing {
   id           String   @id @default(cuid())
   externalId   String   @unique // ID from source (e.g. DDF/MLS)
   source       String   @default("realtor_ca")
+  mlsNumber    String?
   address      String
   city         String
   province     String
@@ -116,6 +117,10 @@ model Listing {
   squareFeet   Float?
   lotSizeSqFt  Float?
   yearBuilt    Int?
+  ownershipType String?
+  zoningType   String?
+  timeOnSourceDays Int?
+  mediaDescriptionText String?
   description  String?
   photoUrls    String? // JSON array of URLs
   listingUrl   String?
@@ -123,6 +128,8 @@ model Listing {
   linkCheckedAt DateTime?
   linkStatusCode Int?
   linkStatusNote String?
+  duplicateOfListingId String?
+  dedupeReason String?
   rawJson      String? // full payload for debugging
   lastSeenAt   DateTime @default(now())
   createdAt    DateTime @default(now())
@@ -130,10 +137,15 @@ model Listing {
   areaId       String?
 
   area         Area?                 @relation(fields: [areaId], references: [id], onDelete: SetNull)
+  duplicateOf  Listing?              @relation("ListingDuplicates", fields: [duplicateOfListingId], references: [id], onDelete: SetNull)
+  duplicates   Listing[]             @relation("ListingDuplicates")
   evaluation   ListingEvaluation?
   listItems    SavedListItem[]
   priceHistory ListingPriceHistory[]
   profile      ListingProfile?
+
+  @@index([source, mlsNumber])
+  @@index([duplicateOfListingId])
 }
 
 // Normalized property profile for strategy engine (canonical; user does not edit)
@@ -141,8 +153,14 @@ model ListingProfile {
   id                     String   @id @default(cuid())
   listingId              String   @unique
   normalizedAssetType    String
+  normalizedAssetSubtype String?
+  normalizedAssetLabel   String?
   normalizedUnits        Int
   assetTypeConfidence    String
+  classificationConfidence String?
+  classificationProvenance String?
+  classificationReasons  String?
+  sourceTypeConflict     Boolean @default(false)
   unitsConfidence        String
   residentialUseCategory String
   residentialShareEstimated Float?
@@ -152,6 +170,7 @@ model ListingProfile {
   normalizationVersion   String   @default("1")
   reviewStatus           String   @default("auto")
   provenanceByField      String?
+  hasInferredFields      Boolean  @default(false)
   marketCityId           String?
   marketZoneId           String?
   zoneMatchMethod        String?
@@ -271,16 +290,119 @@ model ListingPriceHistory {
 
 // Investor evaluation (cashflow + equity growth)
 model ListingEvaluation {
-  id                String   @id @default(cuid())
-  listingId         String   @unique
-  cashflowScore     Float // e.g. 0–100
-  equityGrowthScore Float // 0–100
-  combinedScore     Float // weighted for "best for investors"
-  cashflowNotes     String?
-  equityNotes       String?
-  computedAt        DateTime @default(now())
+  id                     String   @id @default(cuid())
+  listingId              String   @unique
+  cashflowScore          Float // carry score 0–100
+  equityGrowthScore      Float // upside score 0–100
+  combinedScore          Float // weighted scenario-based deal score
+  cashflowNotes          String?
+  equityNotes            String?
+  primaryScenarioId      String?
+  primaryScenarioStatus  String?
+  primaryBridgeUsage     String?
+  primaryAnnualCashflow  Float?
+  primaryMonthlyCashflow Float?
+  primaryDscr            Float?
+  primaryCashOnCashReturn Float?
+  baseHoldScenarioId     String?
+  baseHoldAnnualCashflow Float?
+  baseHoldMonthlyCashflow Float?
+  quickVerdict           String?
+  carryScore             Float?
+  executionScore         Float?
+  upsideScore            Float?
+  confidenceScore        Float?
+  computedAt             DateTime @default(now())
 
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+}
+
+model IngestRun {
+  id              String   @id @default(cuid())
+  source          String
+  mode            String
+  markets         String?
+  laneSummary     String?
+  status          String   @default("running")
+  totalReceived   Int      @default(0)
+  totalKept       Int      @default(0)
+  totalCreated    Int      @default(0)
+  totalUpdated    Int      @default(0)
+  totalSkipped    Int      @default(0)
+  totalDeduped    Int      @default(0)
+  notes           String?
+  startedAt       DateTime @default(now())
+  completedAt     DateTime?
+  segments        IngestSegmentRun[]
+
+  @@index([source, startedAt])
+}
+
+model IngestSegmentRun {
+  id                  String   @id @default(cuid())
+  ingestRunId         String
+  source              String
+  market              String
+  city                String?
+  province            String?
+  lane                String
+  segmentKey          String?
+  priceMin            Float?
+  priceMax            Float?
+  minBedrooms         Int?
+  maxBedrooms         Int?
+  maxResults          Int?
+  captureType         String?
+  pageNumber          Int?
+  pageUrl             String?
+  payloadHash         String?
+  priority            Int      @default(0)
+  previewCount        Int      @default(0)
+  keptCount           Int      @default(0)
+  createdCount        Int      @default(0)
+  updatedCount        Int      @default(0)
+  skippedCount        Int      @default(0)
+  dedupedCount        Int      @default(0)
+  investorRelevantYield Float?
+  wasSplit            Boolean  @default(false)
+  status              String   @default("running")
+  notes               String?
+  startedAt           DateTime @default(now())
+  completedAt         DateTime?
+
+  ingestRun IngestRun @relation(fields: [ingestRunId], references: [id], onDelete: Cascade)
+
+  @@index([ingestRunId, source, market, lane])
+  @@index([source, segmentKey])
+}
+
+model CaptureManifestState {
+  id                   String   @id @default(cuid())
+  source               String
+  segmentKey           String
+  market               String?
+  region               String?
+  lane                 String?
+  currentState         String   @default("pending")
+  lastCaptureType      String?
+  lastPageNumber       Int?
+  resumePageNumber     Int?
+  lastPageUrl          String?
+  lastPayloadHash      String?
+  lastCapturedAt       DateTime?
+  totalCaptures        Int      @default(0)
+  totalListingsReceived Int     @default(0)
+  totalCreated         Int      @default(0)
+  totalUpdated         Int      @default(0)
+  totalDeduped         Int      @default(0)
+  totalSkipped         Int      @default(0)
+  completedAt          DateTime?
+  notes                String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([source, segmentKey])
+  @@index([source, market, lane])
 }
 
 // User-created saved lists (e.g. "Toronto triplexes", "Under 500k")

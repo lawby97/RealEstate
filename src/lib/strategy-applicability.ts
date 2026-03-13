@@ -330,7 +330,7 @@ function isDevelopmentCandidate(profile: NormalizedProfileResult, investorContex
     investorContext.dealStage === "new_construction" ||
     profile.redevelopmentCandidate ||
     profile.normalizedAssetType === "land" ||
-    profile.normalizedAssetType === "parking"
+    (profile.normalizedAssetType === "parking" && profile.normalizedAssetSubtype === "parking_lot")
   );
 }
 
@@ -703,7 +703,10 @@ export function getScenarioApplicability(
   );
 
   const developmentUnitCount = models?.conventional_construction_takeout?.modeledUnits.value ?? profile.normalizedUnits;
-  const developmentThresholdMet = developmentUnitCount >= 5 || profile.normalizedAssetType === "land" || profile.normalizedAssetType === "parking";
+  const developmentThresholdMet =
+    developmentUnitCount >= 5 ||
+    profile.normalizedAssetType === "land" ||
+    (profile.normalizedAssetType === "parking" && profile.normalizedAssetSubtype === "parking_lot");
 
   results.push(
     buildScenarioResult(
@@ -808,10 +811,14 @@ export function getScenarioApplicability(
   results.push(
     buildScenarioResult(
       "conventional_land_bridge_hold",
-      profile.normalizedAssetType === "land" || profile.normalizedAssetType === "parking" || profile.redevelopmentCandidate
+      profile.normalizedAssetType === "land" ||
+      (profile.normalizedAssetType === "parking" && profile.normalizedAssetSubtype === "parking_lot") ||
+      profile.redevelopmentCandidate
         ? "applicable"
         : "not_applicable",
-      profile.normalizedAssetType === "land" || profile.normalizedAssetType === "parking" || profile.redevelopmentCandidate
+      profile.normalizedAssetType === "land" ||
+      (profile.normalizedAssetType === "parking" && profile.normalizedAssetSubtype === "parking_lot") ||
+      profile.redevelopmentCandidate
         ? "Land, parking, or redevelopment basis asset fits the covered-land carry screen."
         : "This path is for land, parking, or redevelopment optionality rather than existing stabilized rental income.",
       profile,

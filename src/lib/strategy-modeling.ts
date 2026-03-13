@@ -963,6 +963,7 @@ function modeledRent(
   const current = defaults.currentMarketRent.value;
   const turnover = defaults.turnoverMarketRent.value;
   const renovated = defaults.renovatedRentProxy.value;
+  const improvementFloorValue = Math.max(turnover, renovated, 0);
   const modeledAverage =
     current > 0 && renovated > 0
       ? Math.round((current + renovated) / 2)
@@ -984,7 +985,18 @@ function modeledRent(
 
   if (unitRentBenchmarks.length > 0) {
     const unitRentSchedule = unitRentBenchmarks.map((unit) => {
-      const modeledRent = usesTurnoverMarketRent ? unit.turnoverMarketRent : usesTurnoverProxy ? unit.renovatedRentProxy : unit.modeledMarketRent;
+      const modeledRent =
+        usesTurnoverMarketRent
+          ? unit.turnoverMarketRent
+          : usesTurnoverProxy
+            ? unit.renovatedRentProxy.value >= unit.turnoverMarketRent.value
+              ? unit.renovatedRentProxy
+              : assume(
+                  unit.turnoverMarketRent.value,
+                  `Higher of ${unit.turnoverMarketRent.label} and ${unit.renovatedRentProxy.label}; floor applied so improvement underwriting does not go below plain turnover rent.`,
+                  unit.turnoverMarketRent.source
+                )
+            : unit.modeledMarketRent;
 
       return {
         unitNumber: unit.unitNumber,
@@ -1004,7 +1016,9 @@ function modeledRent(
     const basisLabel = usesTurnoverMarketRent
       ? defaults.turnoverMarketRent.label
       : usesTurnoverProxy
-        ? defaults.renovatedRentProxy.label
+        ? defaults.renovatedRentProxy.value >= defaults.turnoverMarketRent.value
+          ? defaults.renovatedRentProxy.label
+          : `Higher of ${defaults.turnoverMarketRent.label} and ${defaults.renovatedRentProxy.label}; floor applied so improvement underwriting does not go below plain turnover rent.`
         : `Average of ${defaults.currentMarketRent.label} and ${defaults.renovatedRentProxy.label}.`;
 
     return {
@@ -1019,9 +1033,11 @@ function modeledRent(
   const scalarLabel = usesTurnoverMarketRent
     ? defaults.turnoverMarketRent.label
     : usesTurnoverProxy
-      ? defaults.renovatedRentProxy.label
+      ? defaults.renovatedRentProxy.value >= defaults.turnoverMarketRent.value
+        ? defaults.renovatedRentProxy.label
+        : `Higher of ${defaults.turnoverMarketRent.label} and ${defaults.renovatedRentProxy.label}; floor applied so improvement underwriting does not go below plain turnover rent.`
       : `Average of ${defaults.currentMarketRent.label} and ${defaults.renovatedRentProxy.label}.`;
-  const scalarValue = usesTurnoverMarketRent ? turnover : usesTurnoverProxy ? renovated : modeledAverage;
+  const scalarValue = usesTurnoverMarketRent ? turnover : usesTurnoverProxy ? improvementFloorValue : modeledAverage;
 
   return {
     rentAssumption: assume(

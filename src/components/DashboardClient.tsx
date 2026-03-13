@@ -5,12 +5,13 @@ import Link from "next/link";
 import { ListingCard } from "./ListingCard";
 import {
   BarChart3,
-  TrendingUp,
   Sparkles,
   ChevronRight,
   SlidersHorizontal,
   X,
   ShieldCheck,
+  Wallet,
+  TrendingUp,
 } from "lucide-react";
 
 type Listing = {
@@ -20,6 +21,9 @@ type Listing = {
   province: string;
   price: number;
   propertyType: string;
+  normalizedAssetLabel?: string;
+  classificationReasons?: string[];
+  sourceTypeConflict?: boolean;
   units: number;
   bedrooms: number | null;
   bathrooms: number | null;
@@ -31,20 +35,36 @@ type Listing = {
   isLinkActive?: boolean | null;
   linkCheckedAt?: string | null;
   linkStatusNote?: string | null;
-  evaluation: { combinedScore: number; cashflowScore: number; equityGrowthScore: number } | null;
+  evaluation: {
+    combinedScore: number;
+    primaryScenarioId: string | null;
+    primaryScenarioStatus: string | null;
+    primaryBridgeUsage: string | null;
+    primaryAnnualCashflow: number | null;
+    primaryMonthlyCashflow: number | null;
+    baseHoldScenarioId: string | null;
+    baseHoldAnnualCashflow: number | null;
+    baseHoldMonthlyCashflow: number | null;
+    quickVerdict: string | null;
+  } | null;
 };
 
 type Stats = {
   totalListings: number;
-  topDeals: number;
-  highScoreCount: number;
-  highScore90: number;
-  avgScore: number;
-  avgRoi: number;
+  positiveCarryViableDeals: number;
+  bridgeFreeViableDeals: number;
+  avgBestViableMonthlyCashflow: number;
+  avgDealScore: number;
   totalPortfolioValue?: number;
 };
 
-type SortValue = "price_asc" | "price_desc" | "score_desc" | "score_asc" | "newest";
+type SortValue =
+  | "deal_score_desc"
+  | "best_case_cashflow_desc"
+  | "base_hold_cashflow_desc"
+  | "price_asc"
+  | "price_desc"
+  | "newest";
 
 export function DashboardClient() {
   const [listings, setListings] = useState<Listing[]>([]);
@@ -58,7 +78,10 @@ export function DashboardClient() {
   const [maxPrice, setMaxPrice] = useState("");
   const [minUnits, setMinUnits] = useState("1");
   const [minScore, setMinScore] = useState("");
-  const [sort, setSort] = useState<SortValue>("price_asc");
+  const [sort, setSort] = useState<SortValue>("deal_score_desc");
+  const [positiveCashflowOnly, setPositiveCashflowOnly] = useState(false);
+  const [bridgeFreeOnly, setBridgeFreeOnly] = useState(false);
+  const [viableOnly, setViableOnly] = useState(false);
   const [filterOptions, setFilterOptions] = useState<{ cities: string[]; propertyTypes: string[] }>({ cities: [], propertyTypes: [] });
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [loadKey, setLoadKey] = useState(0);
@@ -96,6 +119,9 @@ export function DashboardClient() {
     if (minUnits) params.set("minUnits", minUnits);
     if (city) params.set("city", city);
     if (propertyType) params.set("propertyType", propertyType);
+    if (positiveCashflowOnly) params.set("positiveCashflowOnly", "1");
+    if (bridgeFreeOnly) params.set("bridgeFreeOnly", "1");
+    if (viableOnly) params.set("viableOnly", "1");
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
     const url =
@@ -127,7 +153,19 @@ export function DashboardClient() {
         clearTimeout(timeoutId);
         setLoading(false);
       });
-  }, [city, propertyType, minPrice, maxPrice, minScore, minUnits, sort, loadKey]);
+  }, [
+    city,
+    propertyType,
+    minPrice,
+    maxPrice,
+    minScore,
+    minUnits,
+    sort,
+    positiveCashflowOnly,
+    bridgeFreeOnly,
+    viableOnly,
+    loadKey,
+  ]);
 
   useEffect(() => {
     fetch("/api/stats")
@@ -143,13 +181,36 @@ export function DashboardClient() {
     setMaxPrice("");
     setMinUnits("1");
     setMinScore("");
-    setSort("price_asc");
+    setSort("deal_score_desc");
+    setPositiveCashflowOnly(false);
+    setBridgeFreeOnly(false);
+    setViableOnly(false);
   };
 
   const hasActiveFilters =
-    !!city || !!propertyType || !!minPrice || !!maxPrice || minUnits !== "1" || !!minScore || sort !== "price_asc";
-  const activeCount = [city, propertyType, minPrice, maxPrice, minUnits !== "1" ? minUnits : "", minScore, sort !== "price_asc" ? sort : ""].filter(Boolean).length;
-  const isMultiFamilyType = propertyType.toLowerCase().includes("multi");
+    !!city ||
+    !!propertyType ||
+    !!minPrice ||
+    !!maxPrice ||
+    minUnits !== "1" ||
+    !!minScore ||
+    sort !== "deal_score_desc" ||
+    positiveCashflowOnly ||
+    bridgeFreeOnly ||
+    viableOnly;
+  const activeCount = [
+    city,
+    propertyType,
+    minPrice,
+    maxPrice,
+    minUnits !== "1" ? minUnits : "",
+    minScore,
+    sort !== "deal_score_desc" ? sort : "",
+    positiveCashflowOnly ? "positiveCashflowOnly" : "",
+    bridgeFreeOnly ? "bridgeFreeOnly" : "",
+    viableOnly ? "viableOnly" : "",
+  ].filter(Boolean).length;
+  const isMultiFamilyType = /(apartment|multi|duplex|triplex|fourplex)/i.test(propertyType);
 
   return (
     <div style={{ padding: 24, backgroundColor: "#f8fafc", minHeight: "100%" }}>
@@ -168,11 +229,9 @@ export function DashboardClient() {
         }}
       >
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>
-            Investment Dashboard
-          </h1>
+          <h1 style={{ fontSize: 24, fontWeight: 600, margin: 0 }}>Investment Dashboard</h1>
           <p style={{ color: "#64748b", margin: "4px 0 0 0", fontSize: 14 }}>
-            Listings whose source pages still resolve, ranked for acquisition review and underwriting.
+            Listings whose source pages still resolve, ranked by scenario-derived underwriting signal.
           </p>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6, backgroundColor: "#fff", border: "1px solid #dbeafe", color: "#1d4ed8", padding: "6px 10px", borderRadius: 999, fontSize: 12, fontWeight: 600 }}>
@@ -207,32 +266,42 @@ export function DashboardClient() {
             <span style={{ width: 8, height: 8, borderRadius: "50%", backgroundColor: "#22c55e" }} />
             <span style={{ fontSize: 13, color: "#64748b" }}>Live Data Feed</span>
           </div>
-          <span style={{ fontSize: 13, color: "#94a3b8" }}>
-            Last updated: {lastUpdated}
-          </span>
+          <span style={{ fontSize: 13, color: "#94a3b8" }}>Last updated: {lastUpdated}</span>
         </div>
       </header>
 
-      <div style={{ marginBottom: 28 }}>
-        <div
-          style={{
-            backgroundColor: "#fff",
-            borderRadius: 12,
-            padding: 20,
-            border: "1px solid #e2e8f0",
-            boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-            <span style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>High-score deals</span>
-            <BarChart3 size={20} color="#64748b" />
-          </div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: "#0f172a" }}>{stats?.topDeals ?? 0}</div>
-          <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>Listings scoring 80+ in the verified-active set</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 8, fontSize: 12, color: "#0f172a", fontWeight: 500 }}>
-            <TrendingUp size={14} /> {stats?.highScore90 ?? 0} score 90+
-          </div>
-        </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+          gap: 16,
+          marginBottom: 28,
+        }}
+      >
+        <DashboardMetricCard
+          title="Positive-carry viable deals"
+          value={String(stats?.positiveCarryViableDeals ?? 0)}
+          detail="Listings whose best viable path is cashflow-positive."
+          icon={<Wallet size={20} color="#64748b" />}
+        />
+        <DashboardMetricCard
+          title="Bridge-free viable deals"
+          value={String(stats?.bridgeFreeViableDeals ?? 0)}
+          detail="Viable paths that do not rely on bridge financing."
+          icon={<ShieldCheck size={20} color="#64748b" />}
+        />
+        <DashboardMetricCard
+          title="Avg best viable monthly cashflow"
+          value={formatCurrency(stats?.avgBestViableMonthlyCashflow ?? 0)}
+          detail="Average top-line monthly carry across viable paths."
+          icon={<TrendingUp size={20} color="#64748b" />}
+        />
+        <DashboardMetricCard
+          title="Avg deal score"
+          value={stats?.avgDealScore != null ? stats.avgDealScore.toFixed(1) : "—"}
+          detail="Scenario-based carry, execution, upside, and confidence score."
+          icon={<Sparkles size={20} color="#64748b" />}
+        />
       </div>
 
       <section>
@@ -242,7 +311,7 @@ export function DashboardClient() {
             <div>
               <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>Underwriting queue</h2>
               <p style={{ margin: "4px 0 0 0", fontSize: 13, color: "#64748b" }}>
-                Start with the strongest-looking deals, then open the ones that justify deeper work.
+                Start with the strongest scenario-derived opportunities, then open the ones that justify deeper work.
               </p>
             </div>
           </div>
@@ -299,7 +368,7 @@ export function DashboardClient() {
           {filtersOpen && (
             <div style={{ padding: "0 20px 20px", borderTop: "1px solid #f1f5f9" }}>
               <p style={{ margin: "14px 0 0 0", fontSize: 13, color: "#64748b" }}>
-                Narrow the list before underwriting. Filters apply to listings whose source pages still resolve.
+                Filter by what makes a deal actionable: viable paths, carry, bridge reliance, price, and score.
               </p>
               <div
                 style={{
@@ -310,147 +379,54 @@ export function DashboardClient() {
                   alignItems: "end",
                 }}
               >
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#64748b", marginBottom: 6 }}>City</label>
-                  <select
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 8,
-                      backgroundColor: "#fff",
-                      fontSize: 14,
-                    }}
-                  >
-                    <option value="">All cities</option>
-                    {filterOptions.cities.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#64748b", marginBottom: 6 }}>Property type</label>
-                  <select
-                    value={propertyType}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setPropertyType(value);
-                      if (!value.toLowerCase().includes("multi")) {
-                        setMinUnits("1");
-                      }
-                    }}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 8,
-                      backgroundColor: "#fff",
-                      fontSize: 14,
-                    }}
-                  >
-                    <option value="">All types</option>
-                    {filterOptions.propertyTypes.map((p) => (
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#64748b", marginBottom: 6 }}>Min price</label>
-                  <input
-                    type="number"
-                    placeholder="Any"
-                    value={minPrice}
-                    onChange={(e) => setMinPrice(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 8,
-                      fontSize: 14,
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#64748b", marginBottom: 6 }}>Max price</label>
-                  <input
-                    type="number"
-                    placeholder="Any"
-                    value={maxPrice}
-                    onChange={(e) => setMaxPrice(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 8,
-                      fontSize: 14,
-                    }}
-                  />
-                </div>
+                <InputSelect label="City" value={city} onChange={setCity} options={[{ value: "", label: "All cities" }, ...filterOptions.cities.map((c) => ({ value: c, label: c }))]} />
+                <InputSelect
+                  label="Property type"
+                  value={propertyType}
+                  onChange={(value) => {
+                    setPropertyType(value);
+                    if (!value.toLowerCase().includes("multi")) setMinUnits("1");
+                  }}
+                  options={[{ value: "", label: "All types" }, ...filterOptions.propertyTypes.map((p) => ({ value: p, label: p }))]}
+                />
+                <InputNumber label="Min price" value={minPrice} onChange={setMinPrice} placeholder="Any" />
+                <InputNumber label="Max price" value={maxPrice} onChange={setMaxPrice} placeholder="Any" />
                 {isMultiFamilyType && (
-                  <div>
-                    <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#64748b", marginBottom: 6 }}>Min units</label>
-                    <select
-                      value={minUnits}
-                      onChange={(e) => setMinUnits(e.target.value)}
-                      style={{
-                        width: "100%",
-                        padding: "10px 12px",
-                        border: "1px solid #e2e8f0",
-                        borderRadius: 8,
-                        backgroundColor: "#fff",
-                        fontSize: 14,
-                      }}
-                    >
-                      <option value="1">1+</option>
-                      <option value="2">2+</option>
-                      <option value="3">3+</option>
-                      <option value="4">4+</option>
-                      <option value="5">5+</option>
-                    </select>
-                  </div>
-                )}
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#64748b", marginBottom: 6 }}>Min score</label>
-                  <input
-                    type="number"
-                    placeholder="Any"
-                    min={0}
-                    max={100}
-                    value={minScore}
-                    onChange={(e) => setMinScore(e.target.value)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 8,
-                      fontSize: 14,
-                    }}
+                  <InputSelect
+                    label="Min units"
+                    value={minUnits}
+                    onChange={setMinUnits}
+                    options={[
+                      { value: "1", label: "1+" },
+                      { value: "2", label: "2+" },
+                      { value: "3", label: "3+" },
+                      { value: "4", label: "4+" },
+                      { value: "5", label: "5+" },
+                    ]}
                   />
-                </div>
-                <div>
-                  <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#64748b", marginBottom: 6 }}>Sort by</label>
-                  <select
-                    value={sort}
-                    onChange={(e) => setSort(e.target.value as SortValue)}
-                    style={{
-                      width: "100%",
-                      padding: "10px 12px",
-                      border: "1px solid #e2e8f0",
-                      borderRadius: 8,
-                      backgroundColor: "#fff",
-                      fontSize: 14,
-                    }}
-                  >
-                    <option value="price_asc">Price: low to high</option>
-                    <option value="price_desc">Price: high to low</option>
-                    <option value="score_desc">Score: highest first</option>
-                    <option value="score_asc">Score: lowest first</option>
-                    <option value="newest">Newest first</option>
-                  </select>
-                </div>
+                )}
+                <InputNumber label="Min deal score" value={minScore} onChange={setMinScore} placeholder="Any" min={0} max={100} />
+                <InputSelect
+                  label="Sort by"
+                  value={sort}
+                  onChange={(value) => setSort(value as SortValue)}
+                  options={[
+                    { value: "deal_score_desc", label: "Deal score: highest first" },
+                    { value: "best_case_cashflow_desc", label: "Best viable cashflow" },
+                    { value: "base_hold_cashflow_desc", label: "Base hold cashflow" },
+                    { value: "price_asc", label: "Price: low to high" },
+                    { value: "price_desc", label: "Price: high to low" },
+                    { value: "newest", label: "Newest first" },
+                  ]}
+                />
               </div>
+
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 16 }}>
+                <FilterToggle label="Positive cashflow only" active={positiveCashflowOnly} onToggle={() => setPositiveCashflowOnly((v) => !v)} />
+                <FilterToggle label="Bridge-free only" active={bridgeFreeOnly} onToggle={() => setBridgeFreeOnly((v) => !v)} />
+                <FilterToggle label="Viable scenarios only" active={viableOnly} onToggle={() => setViableOnly((v) => !v)} />
+              </div>
+
               {hasActiveFilters && (
                 <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
                   <button
@@ -519,5 +495,136 @@ export function DashboardClient() {
         )}
       </section>
     </div>
+  );
+}
+
+function formatCurrency(value: number): string {
+  return value.toLocaleString("en-CA", {
+    style: "currency",
+    currency: "CAD",
+    maximumFractionDigits: 0,
+  });
+}
+
+function DashboardMetricCard({
+  title,
+  value,
+  detail,
+  icon,
+}: {
+  title: string;
+  value: string;
+  detail: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        backgroundColor: "#fff",
+        borderRadius: 12,
+        padding: 20,
+        border: "1px solid #e2e8f0",
+        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <span style={{ fontSize: 13, color: "#64748b", fontWeight: 500 }}>{title}</span>
+        {icon}
+      </div>
+      <div style={{ fontSize: 28, fontWeight: 700, color: "#0f172a" }}>{value}</div>
+      <div style={{ fontSize: 12, color: "#64748b", marginTop: 8 }}>{detail}</div>
+    </div>
+  );
+}
+
+function InputSelect({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <div>
+      <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#64748b", marginBottom: 6 }}>{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ width: "100%", padding: "10px 12px", border: "1px solid #e2e8f0", borderRadius: 8, backgroundColor: "#fff", fontSize: 14 }}
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function InputNumber({
+  label,
+  value,
+  onChange,
+  placeholder,
+  min,
+  max,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  min?: number;
+  max?: number;
+}) {
+  return (
+    <div>
+      <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "#64748b", marginBottom: 6 }}>{label}</label>
+      <input
+        type="number"
+        placeholder={placeholder}
+        value={value}
+        min={min}
+        max={max}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ width: "100%", padding: "10px 12px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 14 }}
+      />
+    </div>
+  );
+}
+
+function FilterToggle({ label, active, onToggle }: { label: string; active: boolean; onToggle: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        borderRadius: 999,
+        border: active ? "1px solid #1d4ed8" : "1px solid #cbd5e1",
+        backgroundColor: active ? "#eff6ff" : "#fff",
+        color: active ? "#1d4ed8" : "#475569",
+        padding: "8px 12px",
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: "pointer",
+      }}
+    >
+      <span
+        style={{
+          width: 10,
+          height: 10,
+          borderRadius: "50%",
+          backgroundColor: active ? "#2563eb" : "#cbd5e1",
+        }}
+      />
+      {label}
+    </button>
   );
 }

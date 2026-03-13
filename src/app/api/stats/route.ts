@@ -3,42 +3,42 @@ import { buildActiveListingWhere, refreshListingActivityCache } from "@/lib/list
 
 export const dynamic = "force-dynamic";
 
+const VIABLE_STATUSES = new Set(["applicable", "potentially_applicable"]);
+
 export async function GET() {
-  await refreshListingActivityCache();
-  const activeWhere = buildActiveListingWhere();
+  await refreshListingActivityCache({ duplicateOfListingId: null });
+  const activeWhere = buildActiveListingWhere({ duplicateOfListingId: null });
 
-  const [total, topDeals, highScore80, highScore90, avgResult, sumResult] = await Promise.all([
-    prisma.listing.count({ where: activeWhere }),
-    prisma.listing.count({
-      where: { ...activeWhere, evaluation: { combinedScore: { gte: 80 } } },
-    }),
-    prisma.listing.count({
-      where: { ...activeWhere, evaluation: { combinedScore: { gte: 80 } } },
-    }),
-    prisma.listing.count({
-      where: { ...activeWhere, evaluation: { combinedScore: { gte: 90 } } },
-    }),
-    prisma.listingEvaluation.aggregate({
-      where: { listing: activeWhere },
-      _avg: { combinedScore: true },
-    }),
-    prisma.listing.aggregate({
-      where: activeWhere,
-      _sum: { price: true },
-    }),
-  ]);
+  const listings = await prisma.listing.findMany({
+    where: activeWhere,
+    include: { evaluation: true },
+  });
 
-  const avgScore = avgResult._avg.combinedScore ?? 0;
-  const avgRoi = total > 0 ? Math.min(12, Math.max(0, (avgScore / 100) * 12)) : 0;
-  const totalPortfolioValue = sumResult._sum.price ?? 0;
+  const total = listings.length;
+  const viable = listings.filter((listing) => VIABLE_STATUSES.has(listing.evaluation?.primaryScenarioStatus ?? "not_applicable"));
+  const positiveCarryViableDeals = viable.filter((listing) => (listing.evaluation?.primaryMonthlyCashflow ?? Number.NEGATIVE_INFINITY) > 0).length;
+  const bridgeFreeViableDeals = viable.filter((listing) => listing.evaluation?.primaryBridgeUsage === "not_needed").length;
+  const dealScores = listings.map((listing) => listing.evaluation?.combinedScore).filter((value): value is number => typeof value === "number");
+  const bestCaseCashflows = viable
+    .map((listing) => listing.evaluation?.primaryMonthlyCashflow)
+    .filter((value): value is number => typeof value === "number");
+  const totalPortfolioValue = listings.reduce((sum, listing) => sum + (listing.price ?? 0), 0);
+  const highScore90 = listings.filter((listing) => (listing.evaluation?.combinedScore ?? 0) >= 90).length;
+  const highScore80 = listings.filter((listing) => (listing.evaluation?.combinedScore ?? 0) >= 80).length;
+  const avgScore = dealScores.length > 0 ? dealScores.reduce((sum, value) => sum + value, 0) / dealScores.length : 0;
+  const avgBestViableMonthlyCashflow =
+    bestCaseCashflows.length > 0 ? bestCaseCashflows.reduce((sum, value) => sum + value, 0) / bestCaseCashflows.length : 0;
 
   return Response.json({
     totalListings: total,
-    topDeals,
+    positiveCarryViableDeals,
+    bridgeFreeViableDeals,
+    avgBestViableMonthlyCashflow: Math.round(avgBestViableMonthlyCashflow * 100) / 100,
+    avgDealScore: Math.round(avgScore * 10) / 10,
+    totalPortfolioValue,
+    topDeals: positiveCarryViableDeals,
     highScoreCount: highScore80,
     highScore90,
-    avgScore,
-    avgRoi: Math.round(avgRoi * 10) / 10,
-    totalPortfolioValue,
+    avgScore: Math.round(avgScore * 10) / 10,
   });
 }

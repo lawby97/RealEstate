@@ -10,11 +10,15 @@
     "postinstall": "prisma generate",
     "ingest": "tsx scripts/ingest-listings.ts",
     "ingest:realtor": "tsx scripts/ingest-realtor-from-file.ts",
+    "ingest:strategic": "tsx scripts/ingest-strategic.ts",
     "seed:market": "tsx scripts/seed-market-data.ts",
     "ingest:cmhc": "tsx scripts/ingest-cmhc-rmr.ts",
     "load:postal-zones": "tsx scripts/load-postal-zone-map.ts",
     "audit:postal-zones": "tsx scripts/audit-postal-zone-coverage.ts",
-    "verify:cmhc": "tsx scripts/verify-cmhc-metrics.ts"
+    "audit:asset-classification": "tsx scripts/audit-asset-classification.ts",
+    "verify:cmhc": "tsx scripts/verify-cmhc-metrics.ts",
+    "recompute:evaluations": "tsx scripts/recompute-listing-evaluations.ts",
+    "queue:quebec-capture": "tsx scripts/quebec-capture-queue.ts"
   },
   "dependencies": {
     "@next-auth/prisma-adapter": "^1.0.7",

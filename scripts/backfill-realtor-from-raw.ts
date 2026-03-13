@@ -6,8 +6,9 @@
  */
 
 import { prisma } from "@/lib/prisma";
-import { evaluateListing } from "@/lib/evaluation";
 import { mapRealtorCaListing } from "@/lib/realtor-ca-api";
+import { mapCentrisListing } from "@/lib/centris-api";
+import { upsertMappedListing } from "@/lib/listing-sync";
 
 function parseArg(name: string, fallback: string): string {
   const entry = process.argv.find((arg) => arg.startsWith(`--${name}=`));
@@ -35,65 +36,11 @@ async function main() {
         continue;
       }
       const raw = JSON.parse(row.rawJson);
-      const mapped = mapRealtorCaListing(raw);
-
-      const listing = await prisma.listing.update({
-        where: { id: row.id },
-        data: {
-          price: mapped.price,
-          address: mapped.address,
-          city: mapped.city,
-          province: mapped.province,
-          propertyType: mapped.propertyType,
-          units: mapped.units,
-          postalCode: mapped.postalCode,
-          latitude: mapped.latitude,
-          longitude: mapped.longitude,
-          bedrooms: mapped.bedrooms,
-          bathrooms: mapped.bathrooms,
-          squareFeet: mapped.squareFeet,
-          lotSizeSqFt: mapped.lotSizeSqFt,
-          yearBuilt: mapped.yearBuilt,
-          description: mapped.description,
-          photoUrls: mapped.photoUrls,
-          listingUrl: mapped.listingUrl,
-          rawJson: mapped.rawJson,
-          lastSeenAt: new Date(),
-          isLinkActive: null,
-          linkCheckedAt: null,
-          linkStatusCode: null,
-          linkStatusNote: null,
-        },
-      });
-
-      const result = evaluateListing({
-        price: listing.price,
-        city: listing.city,
-        province: listing.province,
-        postalCode: listing.postalCode,
-        units: listing.units,
-        bedrooms: listing.bedrooms,
-      });
-
-      await prisma.listingEvaluation.upsert({
-        where: { listingId: listing.id },
-        create: {
-          listingId: listing.id,
-          cashflowScore: result.cashflowScore,
-          equityGrowthScore: result.equityGrowthScore,
-          combinedScore: result.combinedScore,
-          cashflowNotes: result.cashflowNotes,
-          equityNotes: result.equityNotes,
-        },
-        update: {
-          cashflowScore: result.cashflowScore,
-          equityGrowthScore: result.equityGrowthScore,
-          combinedScore: result.combinedScore,
-          cashflowNotes: result.cashflowNotes,
-          equityNotes: result.equityNotes,
-          computedAt: new Date(),
-        },
-      });
+      const mapped =
+        source === "centris_ca"
+          ? mapCentrisListing(raw)
+          : mapRealtorCaListing(raw);
+      await upsertMappedListing(mapped);
 
       updated += 1;
     } catch {

@@ -17,7 +17,16 @@ type Listing = {
   listingUrl: string | null;
   source: string;
   photoUrls: string | null;
-  evaluation: { combinedScore: number; cashflowScore: number; equityGrowthScore: number } | null;
+  evaluation: {
+    combinedScore: number;
+    primaryScenarioId: string | null;
+    primaryScenarioStatus: string | null;
+    primaryBridgeUsage: string | null;
+    primaryMonthlyCashflow: number | null;
+    baseHoldScenarioId: string | null;
+    baseHoldMonthlyCashflow: number | null;
+    quickVerdict: string | null;
+  } | null;
 };
 
 type PreviewListing = {

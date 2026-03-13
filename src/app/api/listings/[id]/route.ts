@@ -8,7 +8,13 @@ export async function GET(
   const id = params.id;
   const listing = await prisma.listing.findUnique({
     where: { id },
-    include: { evaluation: true, area: true },
+    include: {
+      evaluation: true,
+      area: true,
+      profile: true,
+      duplicateOf: { select: { id: true, source: true, address: true } },
+      duplicates: { select: { id: true, source: true, address: true, mlsNumber: true, listingUrl: true } },
+    },
   });
   if (!listing) {
     return Response.json({ error: "Not found" }, { status: 404 });

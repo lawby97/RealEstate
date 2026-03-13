@@ -4,56 +4,15 @@
  */
 
 import type { Listing } from "@prisma/client";
-import type { NormalizedAssetType } from "@/types/listing";
+import type {
+  AssetClassificationProvenance,
+  NormalizedAssetSubtype,
+  NormalizedAssetType,
+} from "@/types/listing";
 import { resolveCmhcZone } from "./cmhc-zone";
+import { classifyAsset, formatNormalizedAssetLabel } from "./asset-classification";
 
 export type ProvenanceByField = Record<string, "source" | "inferred" | "internally_reviewed" | "internal_override">;
-
-const PROPERTY_TYPE_TO_ASSET: Record<string, NormalizedAssetType> = {
-  "single family": "single_family",
-  "single-family": "single_family",
-  "multi-family": "apartment",
-  "multifamily": "apartment",
-  "multi family": "apartment",
-  "apartment": "apartment",
-  "condo": "condo",
-  "condominium": "condo",
-  "townhouse": "townhouse",
-  "town house": "townhouse",
-  "duplex": "duplex",
-  "triplex": "triplex",
-  "fourplex": "fourplex",
-  "land": "land",
-  "parking": "parking",
-  "parking lot": "parking",
-  "vacant land": "land",
-  "mixed use": "mixed_use",
-  "mixed-use": "mixed_use",
-};
-
-function normalizeAssetType(
-  propertyType: string,
-  units: number
-): { assetType: NormalizedAssetType; confidence: "high" | "medium" | "low"; provenance: "source" | "inferred" } {
-  const key = propertyType?.toLowerCase().trim() ?? "";
-  const fromMap = PROPERTY_TYPE_TO_ASSET[key];
-  if (fromMap) {
-    if (fromMap === "land" || fromMap === "parking")
-      return { assetType: fromMap, confidence: "high", provenance: "source" };
-    if (units >= 5 && (fromMap === "apartment" || fromMap === "duplex" || fromMap === "triplex" || fromMap === "fourplex"))
-      return { assetType: "apartment", confidence: "high", provenance: "source" };
-    if (units === 2 && fromMap === "duplex") return { assetType: "duplex", confidence: "high", provenance: "source" };
-    if (units === 3 && fromMap === "triplex") return { assetType: "triplex", confidence: "high", provenance: "source" };
-    if (units === 4 && fromMap === "fourplex") return { assetType: "fourplex", confidence: "high", provenance: "source" };
-    return { assetType: fromMap, confidence: "medium", provenance: "source" };
-  }
-  if (units >= 5) return { assetType: "apartment", confidence: "medium", provenance: "inferred" };
-  if (units === 4) return { assetType: "fourplex", confidence: "low", provenance: "inferred" };
-  if (units === 3) return { assetType: "triplex", confidence: "low", provenance: "inferred" };
-  if (units === 2) return { assetType: "duplex", confidence: "low", provenance: "inferred" };
-  if (units === 1) return { assetType: "single_family", confidence: "low", provenance: "inferred" };
-  return { assetType: "apartment", confidence: "low", provenance: "inferred" };
-}
 
 function unitsConfidence(units: number, sourceUnits: number): "high" | "medium" | "low" {
   if (sourceUnits === units && sourceUnits > 0) return "high";
@@ -63,7 +22,13 @@ function unitsConfidence(units: number, sourceUnits: number): "high" | "medium" 
 
 export interface NormalizedProfileResult {
   normalizedAssetType: NormalizedAssetType;
+  normalizedAssetSubtype: NormalizedAssetSubtype;
+  normalizedAssetLabel: string;
   normalizedUnits: number;
+  classificationConfidence: "high" | "medium" | "low";
+  classificationProvenance: AssetClassificationProvenance;
+  classificationReasons: string[];
+  sourceTypeConflict: boolean;
   assetTypeConfidence: "high" | "medium" | "low";
   unitsConfidence: "high" | "medium" | "low";
   residentialUseCategory: "residential" | "mixed_use" | "non_residential";
@@ -84,10 +49,10 @@ export interface NormalizedProfileResult {
  */
 export function deriveNormalizedProfile(listing: Listing): NormalizedProfileResult {
   const units = listing.units ?? 1;
-  const { assetType, confidence: atConf, provenance: atProv } = normalizeAssetType(
-    listing.propertyType,
-    units
-  );
+  const classification = classifyAsset(listing);
+  const assetType = classification.normalizedAssetType;
+  const atConf = classification.classificationConfidence;
+  const atProv = classification.classificationProvenance === "source" ? "source" : "inferred";
   const prov: ProvenanceByField = {
     normalizedAssetType: atProv,
     normalizedUnits: listing.units != null && listing.units > 0 ? "source" : "inferred",
@@ -98,16 +63,20 @@ export function deriveNormalizedProfile(listing: Listing): NormalizedProfileResu
   let residentialShareEstimated: number | null = 1;
   let redevelopmentCandidate = false;
 
-  if (assetType === "land" || assetType === "parking") {
+  if (classification.normalizedAssetType === "land") {
     residentialUseCategory = "non_residential";
     residentialShareEstimated = null;
     redevelopmentCandidate = true;
-  } else if (assetType === "mixed_use") {
+  } else if (classification.normalizedAssetType === "parking") {
+    residentialUseCategory = "non_residential";
+    residentialShareEstimated = null;
+    redevelopmentCandidate = classification.normalizedAssetSubtype === "parking_lot";
+  } else if (classification.normalizedAssetType === "mixed_use") {
     residentialUseCategory = "mixed_use";
     residentialShareEstimated = 0.7;
   }
 
-  const { cma, zone } = resolveCmhcZone(
+  const { zone } = resolveCmhcZone(
     listing.city,
     listing.province,
     listing.postalCode
@@ -170,18 +139,35 @@ export function deriveNormalizedProfile(listing: Listing): NormalizedProfileResu
   };
 
   const hasInferredFields = Object.values(prov).some((p) => p === "inferred");
-  const reviewStatus = hasInferredFields ? "needs_review" : "auto";
+  const needsReview =
+    (prov.normalizedAssetType === "inferred" && atConf === "low") ||
+    (prov.normalizedUnits === "inferred" && unitsConf === "low");
+  const reviewStatus = needsReview ? "needs_review" : "auto";
+  const normalizationNotes = classification.classificationReasons.length > 0
+    ? classification.classificationReasons.join(" ")
+    : hasInferredFields
+      ? "Some fields inferred from property type and unit count."
+      : null;
 
   return {
-    normalizedAssetType: assetType,
+    normalizedAssetType: classification.normalizedAssetType,
+    normalizedAssetSubtype: classification.normalizedAssetSubtype,
+    normalizedAssetLabel: formatNormalizedAssetLabel(
+      classification.normalizedAssetType,
+      classification.normalizedAssetSubtype
+    ),
     normalizedUnits: units,
+    classificationConfidence: classification.classificationConfidence,
+    classificationProvenance: classification.classificationProvenance,
+    classificationReasons: classification.classificationReasons,
+    sourceTypeConflict: classification.sourceTypeConflict,
     assetTypeConfidence: atConf,
     unitsConfidence: unitsConf,
     residentialUseCategory,
     residentialShareEstimated,
     redevelopmentCandidate,
     strategyEligibilityFlags,
-    normalizationNotes: hasInferredFields ? "Some fields inferred from property type and unit count." : null,
+    normalizationNotes,
     reviewStatus,
     provenanceByField: prov,
     zoneLabel,

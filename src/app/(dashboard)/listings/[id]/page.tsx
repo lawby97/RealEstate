@@ -18,6 +18,7 @@ import { ListingDetailClient } from "@/components/strategies/ListingDetailClient
 import { buildInvestorContextDefaults, type InvestorProfileDefaults } from "@/lib/investor-context";
 import { buildInvestmentWorkspace } from "@/lib/investment-workspace";
 import type { OperatingExpenseTemplate } from "@/types/listing";
+import { STRATEGY_META } from "@/lib/strategy-applicability";
 
 export default async function ListingDetailPage({
   params,
@@ -122,6 +123,21 @@ export default async function ListingDetailPage({
       : "Source";
   const pricePerUnit = listing.units > 0 ? Math.round(listing.price / listing.units) : null;
   const benchmarkRentLabel = marketBenchmark.benchmarkCurrentRentLabel || "Market benchmark";
+  const bestPathLabel =
+    evaluation?.primaryScenarioId != null
+      ? STRATEGY_META[evaluation.primaryScenarioId]?.name ?? evaluation.primaryScenarioId
+      : "No viable path yet";
+  const baseHoldPathLabel =
+    evaluation?.baseHoldScenarioId != null
+      ? STRATEGY_META[evaluation.baseHoldScenarioId]?.name ?? evaluation.baseHoldScenarioId
+      : profile.normalizedAssetType === "land" || profile.normalizedAssetType === "parking"
+        ? "Development / land carry only"
+        : "No base hold path";
+  const quickConstraint = evaluation ? deriveEvaluationConstraint(evaluation) : null;
+  const assetBadgeTitle =
+    profile.sourceTypeConflict && profile.classificationReasons.length > 0
+      ? `Source type: ${listing.propertyType}. Normalized as: ${profile.normalizedAssetLabel}. ${profile.classificationReasons.join(" ")}`
+      : undefined;
 
   return (
     <div style={styles.page}>
@@ -132,7 +148,7 @@ export default async function ListingDetailPage({
       <header style={styles.headerWrap}>
         <div style={styles.headerCard}>
           <div style={styles.badgeRow}>
-            <HeaderBadge>{listing.propertyType}</HeaderBadge>
+            <HeaderBadge title={assetBadgeTitle}>{profile.normalizedAssetLabel}</HeaderBadge>
             <HeaderBadge>
               {listing.units} {listing.units === 1 ? "unit" : "units"}
             </HeaderBadge>
@@ -176,22 +192,41 @@ export default async function ListingDetailPage({
             />
             <SummaryCard
               icon={<ChartColumnIncreasing size={16} />}
-              label="Deal score"
-              value={evaluation ? evaluation.combinedScore.toFixed(1) : "—"}
-              detail={evaluation ? `Cashflow ${evaluation.cashflowScore.toFixed(1)} · Equity ${evaluation.equityGrowthScore.toFixed(1)}` : "No evaluation yet"}
+              label="Best viable cashflow"
+              value={evaluation?.primaryMonthlyCashflow != null ? formatMonthlyCashflow(evaluation.primaryMonthlyCashflow) : "No viable path yet"}
+              detail={evaluation?.quickVerdict ?? "No viable path yet"}
             />
             <SummaryCard
               icon={<MapPinned size={16} />}
-              label="Current market rent"
-              value={marketBenchmark.benchmarkCurrentRent != null ? `$${marketBenchmark.benchmarkCurrentRent.toLocaleString("en-CA")}/mo` : "—"}
-              detail={benchmarkRentLabel}
+              label="Best path"
+              value={bestPathLabel}
+              detail={
+                evaluation?.primaryBridgeUsage
+                  ? bridgeUsageLabel(evaluation.primaryBridgeUsage)
+                  : "Scenario cache pending"
+              }
             />
             <SummaryCard
               icon={<Building2 size={16} />}
-              label="Mapped market"
-              value={marketBenchmark.mappedMarketCity ?? "—"}
-              detail={marketBenchmark.mappedZone ?? "City-level fallback"}
+              label="Base hold cashflow"
+              value={
+                evaluation?.baseHoldMonthlyCashflow != null
+                  ? formatMonthlyCashflow(evaluation.baseHoldMonthlyCashflow)
+                  : baseHoldPathLabel
+              }
+              detail={baseHoldPathLabel}
             />
+          </div>
+
+          <div style={{ ...styles.badgeRow, marginTop: 14 }}>
+            {evaluation ? <HeaderBadge>Deal score {evaluation.combinedScore.toFixed(1)}</HeaderBadge> : null}
+            {evaluation?.carryScore != null ? (
+              <HeaderBadge>
+                Carry {evaluation.carryScore.toFixed(1)} · Execution {evaluation.executionScore?.toFixed(1) ?? "—"} · Upside {evaluation.upsideScore?.toFixed(1) ?? "—"}
+              </HeaderBadge>
+            ) : null}
+            {quickConstraint ? <HeaderBadge>{quickConstraint}</HeaderBadge> : null}
+            {evaluation?.quickVerdict ? <HeaderBadge>Market-default quick read: {evaluation.quickVerdict}</HeaderBadge> : null}
           </div>
         </div>
 
@@ -330,6 +365,7 @@ export default async function ListingDetailPage({
           initialWorkspace={initialWorkspace}
           workspaceInput={workspaceInput}
           investorContextDefaults={investorContextDefaults}
+          dataConfidence={dataConfidence}
         />
       </section>
 
@@ -387,8 +423,8 @@ function SummaryCard({
   );
 }
 
-function HeaderBadge({ children }: { children: ReactNode }) {
-  return <span style={styles.headerBadge}>{children}</span>;
+function HeaderBadge({ children, title }: { children: ReactNode; title?: string }) {
+  return <span style={styles.headerBadge} title={title}>{children}</span>;
 }
 
 function FactBadge({ children }: { children: ReactNode }) {
@@ -436,6 +472,41 @@ function parsePhotoUrls(raw: string | null): string[] {
   } catch {
     return [];
   }
+}
+
+function formatMonthlyCashflow(value: number): string {
+  const sign = value < 0 ? "-" : "";
+  return `${sign}$${Math.abs(Math.round(value)).toLocaleString("en-CA")}/mo`;
+}
+
+function bridgeUsageLabel(bridgeUsage: string): string {
+  switch (bridgeUsage) {
+    case "not_needed":
+      return "Bridge-free hold";
+    case "optional":
+      return "Bridge optional";
+    case "common":
+      return "Bridge commonly required";
+    case "core":
+      return "Bridge / construction financing core";
+    default:
+      return "Scenario cache pending";
+  }
+}
+
+function deriveEvaluationConstraint(
+  evaluation: NonNullable<NonNullable<Awaited<ReturnType<typeof getListingDetailPayload>>>["evaluation"]>
+): string | null {
+  if (evaluation.primaryBridgeUsage === "common" || evaluation.primaryBridgeUsage === "core") {
+    return "Constraint: bridge required";
+  }
+  if (evaluation.primaryMonthlyCashflow != null && evaluation.primaryMonthlyCashflow < 0) {
+    return `Constraint: ${formatMonthlyCashflow(Math.abs(evaluation.primaryMonthlyCashflow)).replace("/mo", "")} gap to break-even`;
+  }
+  if (evaluation.primaryDscr != null && evaluation.primaryDscr < 1.2) {
+    return `Constraint: ${(1.2 - evaluation.primaryDscr).toFixed(2)} DSCR gap to 1.20`;
+  }
+  return null;
 }
 
 function confidenceStyle(confidence: "high" | "medium" | "low"): CSSProperties {

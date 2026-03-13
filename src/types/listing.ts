@@ -28,6 +28,19 @@ export type NormalizedAssetType =
   | "land"
   | "parking";
 
+export type NormalizedAssetSubtype =
+  | "parking_space"
+  | "parking_lot"
+  | "vacant_land"
+  | "covered_land"
+  | "unknown";
+
+export type AssetClassificationProvenance =
+  | "source"
+  | "description_inferred"
+  | "structural_inferred"
+  | "mixed_signal";
+
 export type BusinessPlanId =
   | "live_in_homeowner"
   | "small_bay_hold"
@@ -107,6 +120,25 @@ export interface FinancingScenarioApplicabilityResult {
 }
 
 export type StrategyApplicabilityResult = FinancingScenarioApplicabilityResult;
+
+export interface QuickDecisionSummary {
+  primaryScenarioId: StrategyId | null;
+  primaryScenarioStatus: StrategyApplicabilityStatus | null;
+  primaryBridgeUsage: BridgeUsage | null;
+  primaryAnnualCashflow: number | null;
+  primaryMonthlyCashflow: number | null;
+  primaryDscr: number | null;
+  primaryCashOnCashReturn: number | null;
+  baseHoldScenarioId: StrategyId | null;
+  baseHoldAnnualCashflow: number | null;
+  baseHoldMonthlyCashflow: number | null;
+  quickVerdict: string;
+  carryScore: number;
+  executionScore: number;
+  upsideScore: number;
+  confidenceScore: number;
+  combinedScore: number;
+}
 
 export interface ProvenanceCounts {
   source: number;

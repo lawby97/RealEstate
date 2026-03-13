@@ -228,6 +228,7 @@ export async function searchRealtorCaListings(
 export function mapRealtorCaListing(raw: RealtorCaListing | Record<string, unknown>): {
   externalId: string;
   source: string;
+  mlsNumber: string | null;
   address: string;
   city: string;
   province: string;
@@ -243,6 +244,10 @@ export function mapRealtorCaListing(raw: RealtorCaListing | Record<string, unkno
   squareFeet: number | null;
   lotSizeSqFt: number | null;
   yearBuilt: number | null;
+  ownershipType: string | null;
+  zoningType: string | null;
+  timeOnSourceDays: number | null;
+  mediaDescriptionText: string | null;
   description: string | null;
   photoUrls: string | null;
   listingUrl: string | null;
@@ -261,7 +266,8 @@ export function mapRealtorCaListing(raw: RealtorCaListing | Record<string, unkno
         : addrObj
           ? (addrObj.AddressText ?? addrObj.StreetAddress ?? addrObj.address) as string
           : "";
-  const id = String(r.Id ?? r.id ?? r.mls_number ?? r.mlsNumber ?? r.propertyId ?? "").trim() || `realtor-${Math.random().toString(36).slice(2)}`;
+  const id = String(r.Id ?? r.id ?? r.propertyId ?? "").trim() || `realtor-${Math.random().toString(36).slice(2)}`;
+  const mlsNumber = String(r.MlsNumber ?? r.mlsNumber ?? r.mls_number ?? "").trim() || null;
   let city = String(r.City ?? r.city ?? "").trim();
   if (!city && addrStr) {
     const parts = addrStr.split("|");
@@ -315,29 +321,46 @@ export function mapRealtorCaListing(raw: RealtorCaListing | Record<string, unkno
   const description = (r.PublicRemarks ?? r.public_remarks ?? r.publicRemarks ?? r.description ?? r.remarks ?? ""); const desc = (description != null && description !== "") ? String(description).trim() : null;
   const units = inferUnits(r, propertyType, desc);
   const parsedMix = parseUnitBedroomMix([desc, JSON.stringify(raw)].filter(Boolean).join(" "), units);
+  const ownershipType = String(r.OwnershipType ?? prop.OwnershipType ?? prop.ownershipType ?? "").trim() || null;
+  const zoningType = String(prop.ZoningType ?? prop.zoningType ?? r.ZoningType ?? r.zoningType ?? "").trim() || null;
+  const timeOnSourceRaw = r.TimeOnRealtor ?? r.timeOnRealtor ?? r.DaysOnMarket ?? r.daysOnMarket ?? r.DOM ?? r.dom ?? null;
+  const timeOnSourceDays =
+    timeOnSourceRaw == null || String(timeOnSourceRaw).trim() === ""
+      ? null
+      : Number.parseInt(String(timeOnSourceRaw).replace(/[^\d-]/g, ""), 10) || null;
   let photoArr: string[] = [];
+  const mediaDescriptions: string[] = [];
   const listingPhoto = r.Listing as Record<string, unknown> | undefined;
   if (listingPhoto?.Photo) {
-    const photos = listingPhoto.Photo as Array<{ Medias?: Array<{ Url?: string }> }>;
+    const photos = listingPhoto.Photo as Array<{ Medias?: Array<{ Url?: string; Description?: string }> }>;
     photoArr = photos?.flatMap((p) => p.Medias ?? []).map((m) => m.Url).filter(Boolean) as string[] ?? [];
+    mediaDescriptions.push(
+      ...photos.flatMap((p) => p.Medias ?? []).map((m) => m.Description).filter(Boolean) as string[]
+    );
   }
   if (photoArr.length === 0 && Array.isArray(prop.Photo)) {
-    photoArr = (prop.Photo as Array<{ HighResPath?: string; MedResPath?: string; LowResPath?: string; Url?: string }>)
+    const photos = prop.Photo as Array<{ HighResPath?: string; MedResPath?: string; LowResPath?: string; Url?: string; Description?: string }>;
+    photoArr = photos
       .map((p) => p.HighResPath ?? p.MedResPath ?? p.LowResPath ?? p.Url)
       .filter(Boolean) as string[];
+    mediaDescriptions.push(...photos.map((p) => p.Description).filter(Boolean) as string[]);
   }
   if (photoArr.length === 0 && Array.isArray(prop.photo)) {
-    photoArr = (prop.photo as Array<{ high_res_path?: string; low_res_path?: string; Url?: string }>).map((p) => p.high_res_path ?? p.low_res_path ?? p.Url).filter(Boolean) as string[];
+    const photos = prop.photo as Array<{ high_res_path?: string; low_res_path?: string; Url?: string; description?: string }>;
+    photoArr = photos.map((p) => p.high_res_path ?? p.low_res_path ?? p.Url).filter(Boolean) as string[];
+    mediaDescriptions.push(...photos.map((p) => p.description).filter(Boolean) as string[]);
   }
   if (photoArr.length === 0 && Array.isArray(r.photos)) photoArr = r.photos.map(String).filter(Boolean);
   if (photoArr.length === 0 && r.image) photoArr = [String(r.image)];
   const photoUrls = photoArr.length > 0 ? JSON.stringify(photoArr) : null;
+  const mediaDescriptionText = mediaDescriptions.length > 0 ? mediaDescriptions.join(" | ") : null;
   const relUrl = (r.RelativeDetailsURL ?? r.relative_details_url ?? r.relativeDetailsURL ?? r.relative_url_en ?? r.relative_url_fr ?? r.url ?? r.listingUrl ?? r.detailUrl ?? ""); const rel = (relUrl != null && relUrl !== "") ? String(relUrl).trim() : "";
   const listingUrl = rel ? (rel.startsWith("http") ? rel : `https://www.realtor.ca${rel.startsWith("/") ? "" : "/"}${rel}`) : null;
 
   return {
     externalId: id,
     source: "realtor_ca",
+    mlsNumber,
     address: (addrStr && String(addrStr).trim()) || "Unknown",
     city,
     province,
@@ -358,6 +381,10 @@ export function mapRealtorCaListing(raw: RealtorCaListing | Record<string, unkno
     squareFeet: sq != null && !Number.isNaN(sq) ? sq : null,
     lotSizeSqFt: lotSizeSqFt != null && !Number.isNaN(Number(lotSizeSqFt)) ? Number(lotSizeSqFt) : null,
     yearBuilt: yearBuilt != null && !Number.isNaN(yearBuilt) ? yearBuilt : null,
+    ownershipType,
+    zoningType,
+    timeOnSourceDays,
+    mediaDescriptionText,
     description: desc,
     photoUrls,
     listingUrl,

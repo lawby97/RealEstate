@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { DollarSign, Sparkles, TrendingUp } from "lucide-react";
 
 type Stats = {
-  avgScore: number;
-  avgRoi: number;
+  avgDealScore: number;
+  avgBestViableMonthlyCashflow: number;
   totalPortfolioValue?: number;
   totalListings: number;
 };
@@ -27,8 +27,8 @@ export default function PropertiesPage() {
       : portfolioValue >= 1e3
         ? `$${(portfolioValue / 1e3).toFixed(0)}K`
         : `$${portfolioValue.toLocaleString()}`;
-  const avgRoiDisplay = stats?.avgRoi != null ? `${stats.avgRoi.toFixed(1)}%` : "—";
-  const avgScore = stats?.avgScore != null ? stats.avgScore.toFixed(1) : "—";
+  const avgCashflowDisplay = stats?.avgBestViableMonthlyCashflow != null ? `$${Math.round(stats.avgBestViableMonthlyCashflow).toLocaleString()}/mo` : "—";
+  const avgScore = stats?.avgDealScore != null ? stats.avgDealScore.toFixed(1) : "—";
 
   return (
     <div style={{ padding: 24, backgroundColor: "#f8fafc", minHeight: "100%" }}>
@@ -47,10 +47,10 @@ export default function PropertiesPage() {
         }}
       >
         <MetricCard
-          title="Average ROI"
-          value={avgRoiDisplay}
+          title="Avg Best Cashflow"
+          value={avgCashflowDisplay}
           icon={<TrendingUp size={20} color="#64748b" />}
-          detail="Average modeled annual return across tracked listings."
+          detail="Average best viable monthly cashflow across tracked listings."
         />
         <MetricCard
           title="Portfolio Value"

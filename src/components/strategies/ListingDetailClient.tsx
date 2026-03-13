@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { buildInvestmentWorkspace, scenariosForBusinessPlan, selectDefaultBusinessPlan, selectDefaultScenario, type InvestmentWorkspace, type InvestmentWorkspaceInput } from "@/lib/investment-workspace";
 import { projectUseLabel } from "@/lib/investor-context";
-import type { BusinessPlanId, DealStage, InvestorContext, ProjectUse, StrategyId } from "@/types/listing";
+import { deriveQuickDecisionConstraint, summarizeInvestmentWorkspace } from "@/lib/quick-decision";
+import { STRATEGY_META } from "@/lib/strategy-applicability";
+import type { BusinessPlanId, DataConfidence, DealStage, InvestorContext, ProjectUse, StrategyId } from "@/types/listing";
 import { StrategySelector } from "./StrategySelector";
 import { StrategyPlaybookView } from "./StrategyPlaybookView";
 
@@ -11,6 +13,7 @@ export function ListingDetailClient(props: {
   initialWorkspace: InvestmentWorkspace;
   workspaceInput: Omit<InvestmentWorkspaceInput, "investorContext">;
   investorContextDefaults: InvestorContext;
+  dataConfidence: DataConfidence;
 }) {
   const [investorContext, setInvestorContext] = useState<InvestorContext>(props.investorContextDefaults);
   const workspace = useMemo(
@@ -49,6 +52,14 @@ export function ListingDetailClient(props: {
     () => scenariosForBusinessPlan(workspace, selectedBusinessPlanId),
     [workspace, selectedBusinessPlanId]
   );
+  const quickSummary = useMemo(
+    () => summarizeInvestmentWorkspace(workspace, props.dataConfidence),
+    [props.dataConfidence, workspace]
+  );
+  const quickConstraint = useMemo(
+    () => deriveQuickDecisionConstraint(quickSummary),
+    [quickSummary]
+  );
   const selectedModel = workspace.scenarioModels[selectedScenarioId];
   const showMultifamilyContext =
     props.workspaceInput.profile.normalizedUnits >= 5 ||
@@ -59,6 +70,8 @@ export function ListingDetailClient(props: {
 
   return (
     <div className="space-y-8">
+      <QuickDecisionBar summary={quickSummary} constraint={quickConstraint} />
+
       <InvestorDealContextBar
         investorContext={investorContext}
         defaults={props.investorContextDefaults}
@@ -82,6 +95,65 @@ export function ListingDetailClient(props: {
 
       {selectedModel && <StrategyPlaybookView key={`${selectedBusinessPlanId}:${selectedScenarioId}`} model={selectedModel} />}
     </div>
+  );
+}
+
+function QuickDecisionBar(props: {
+  summary: ReturnType<typeof summarizeInvestmentWorkspace>;
+  constraint: ReturnType<typeof deriveQuickDecisionConstraint>;
+}) {
+  const bestPathLabel = props.summary.primaryScenarioId
+    ? STRATEGY_META[props.summary.primaryScenarioId].name
+    : "No viable path yet";
+  const baseHoldLabel = props.summary.baseHoldScenarioId
+    ? STRATEGY_META[props.summary.baseHoldScenarioId].name
+    : "Development / land carry only";
+
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div className="max-w-2xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Your current context</p>
+          <h3 className="mt-1 text-base font-semibold text-slate-900">Fast decision read</h3>
+          <p className="mt-1 text-sm leading-6 text-slate-600">
+            This summary updates as you change investor context, so the header quick read stays distinct from the market-default cache above.
+          </p>
+        </div>
+        {props.constraint ? (
+          <div
+            className={`rounded-xl border px-4 py-3 text-sm font-semibold ${
+              props.constraint.tone === "emerald"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : props.constraint.tone === "amber"
+                  ? "border-amber-200 bg-amber-50 text-amber-800"
+                  : props.constraint.tone === "rose"
+                    ? "border-rose-200 bg-rose-50 text-rose-800"
+                    : "border-slate-200 bg-slate-50 text-slate-700"
+            }`}
+          >
+            {props.constraint.label}: {typeof props.constraint.value === "number" ? formatMonthlyNumber(props.constraint.value, false) : props.constraint.value}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <QuickSummaryCard
+          label="Best viable cashflow"
+          value={props.summary.primaryMonthlyCashflow != null ? formatMonthlyNumber(props.summary.primaryMonthlyCashflow) : "No viable path yet"}
+          detail={props.summary.quickVerdict}
+        />
+        <QuickSummaryCard
+          label="Best path"
+          value={bestPathLabel}
+          detail={props.summary.primaryScenarioStatus ? props.summary.primaryScenarioStatus.replaceAll("_", " ") : "No viable scenario"}
+        />
+        <QuickSummaryCard
+          label="Base hold cashflow"
+          value={props.summary.baseHoldMonthlyCashflow != null ? formatMonthlyNumber(props.summary.baseHoldMonthlyCashflow) : "—"}
+          detail={baseHoldLabel}
+        />
+      </div>
+    </section>
   );
 }
 
@@ -294,4 +366,20 @@ function NumberField(props: {
       </div>
     </label>
   );
+}
+
+function QuickSummaryCard(props: { label: string; value: string; detail: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">{props.label}</p>
+      <p className="mt-3 text-xl font-semibold tracking-[-0.02em] text-slate-950">{props.value}</p>
+      <p className="mt-2 text-sm leading-6 text-slate-600">{props.detail}</p>
+    </div>
+  );
+}
+
+function formatMonthlyNumber(value: number, withPerMonth = true): string {
+  const sign = value < 0 ? "-" : "";
+  const formatted = `${sign}$${Math.abs(Math.round(value)).toLocaleString("en-CA")}`;
+  return withPerMonth ? `${formatted}/mo` : formatted;
 }

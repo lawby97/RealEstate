@@ -1,11 +1,10 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { evaluateListing } from "@/lib/evaluation";
 import {
   fetchAllRealtorCaListings,
   mapRealtorCaListing,
   type RealtorCaListing,
 } from "@/lib/realtor-ca-api";
+import { upsertMappedListing } from "@/lib/listing-sync";
 
 const MAX_RESULTS_DEFAULT = 200;
 const MAX_RESULTS_CAP = 500;
@@ -80,73 +79,14 @@ export async function POST(req: NextRequest) {
 
     let created = 0;
     let updated = 0;
+    let deduped = 0;
 
     for (const raw of rawListings as RealtorCaListing[]) {
       const mapped = mapRealtorCaListing(raw);
-      const listing = await prisma.listing.upsert({
-        where: { externalId: mapped.externalId },
-        create: {
-          ...mapped,
-          isLinkActive: null,
-          linkCheckedAt: null,
-          linkStatusCode: null,
-          linkStatusNote: null,
-        },
-        update: {
-          price: mapped.price,
-          address: mapped.address,
-          city: mapped.city,
-          province: mapped.province,
-          postalCode: mapped.postalCode,
-          latitude: mapped.latitude,
-          longitude: mapped.longitude,
-          bedrooms: mapped.bedrooms,
-          bathrooms: mapped.bathrooms,
-          squareFeet: mapped.squareFeet,
-          lotSizeSqFt: mapped.lotSizeSqFt,
-          yearBuilt: mapped.yearBuilt,
-          description: mapped.description,
-          photoUrls: mapped.photoUrls,
-          listingUrl: mapped.listingUrl,
-          lastSeenAt: new Date(),
-          isLinkActive: null,
-          linkCheckedAt: null,
-          linkStatusCode: null,
-          linkStatusNote: null,
-          rawJson: mapped.rawJson,
-        },
-      });
-      if (listing.createdAt.getTime() === listing.updatedAt.getTime()) created++;
+      const outcome = await upsertMappedListing(mapped);
+      if (outcome.status === "created") created++;
       else updated++;
-
-      const result = evaluateListing({
-        price: listing.price,
-        city: listing.city,
-        province: listing.province,
-        postalCode: listing.postalCode,
-        units: listing.units,
-        bedrooms: listing.bedrooms,
-      });
-
-      await prisma.listingEvaluation.upsert({
-        where: { listingId: listing.id },
-        create: {
-          listingId: listing.id,
-          cashflowScore: result.cashflowScore,
-          equityGrowthScore: result.equityGrowthScore,
-          combinedScore: result.combinedScore,
-          cashflowNotes: result.cashflowNotes,
-          equityNotes: result.equityNotes,
-        },
-        update: {
-          cashflowScore: result.cashflowScore,
-          equityGrowthScore: result.equityGrowthScore,
-          combinedScore: result.combinedScore,
-          cashflowNotes: result.cashflowNotes,
-          equityNotes: result.equityNotes,
-          computedAt: new Date(),
-        },
-      });
+      if (outcome.duplicateOfListingId) deduped++;
     }
 
     return Response.json({
@@ -155,6 +95,7 @@ export async function POST(req: NextRequest) {
       fetched: rawListings.length,
       created,
       updated,
+      deduped,
       evaluated: rawListings.length,
       message: `Upserted ${rawListings.length} listings from Realtor.ca.`,
     });

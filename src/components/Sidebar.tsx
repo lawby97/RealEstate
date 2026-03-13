@@ -14,10 +14,10 @@ import {
 
 type Stats = {
   totalListings?: number;
-  topDeals?: number;
-  highScoreCount?: number;
-  highScore90?: number;
-  avgRoi?: number;
+  positiveCarryViableDeals?: number;
+  bridgeFreeViableDeals?: number;
+  avgBestViableMonthlyCashflow?: number;
+  avgDealScore?: number;
 };
 
 export function Sidebar() {
@@ -196,9 +196,9 @@ export function Sidebar() {
               color: "#475569",
             }}
           >
-            <div style={{ marginBottom: 6 }}>Active Deals {stats?.topDeals ?? 0}</div>
-            <div style={{ marginBottom: 6 }}>High Score (90+) {stats?.highScore90 ?? 0}</div>
-            <div>Avg. ROI {stats?.avgRoi != null ? `${stats.avgRoi}%` : "0%"}</div>
+            <div style={{ marginBottom: 6 }}>Positive Carry {stats?.positiveCarryViableDeals ?? 0}</div>
+            <div style={{ marginBottom: 6 }}>Bridge-free {stats?.bridgeFreeViableDeals ?? 0}</div>
+            <div>Avg. Best CF {stats?.avgBestViableMonthlyCashflow != null ? `$${Math.round(stats.avgBestViableMonthlyCashflow).toLocaleString()}/mo` : "$0/mo"}</div>
           </div>
         </div>
 

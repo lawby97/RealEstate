@@ -16,7 +16,11 @@ function defaultDealStage(
   if (preferredDealStage === "existing" || preferredDealStage === "new_construction") {
     return preferredDealStage;
   }
-  if (profile.redevelopmentCandidate || profile.normalizedAssetType === "land" || profile.normalizedAssetType === "parking") {
+  if (
+    profile.redevelopmentCandidate ||
+    profile.normalizedAssetType === "land" ||
+    (profile.normalizedAssetType === "parking" && profile.normalizedAssetSubtype === "parking_lot")
+  ) {
     return "new_construction";
   }
   return "existing";
