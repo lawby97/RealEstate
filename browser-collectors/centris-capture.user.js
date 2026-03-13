@@ -12,6 +12,7 @@
   "use strict";
 
   const SOURCE = "centris_ca";
+  const SCOPE = "greater_montreal_core";
   const LOCAL_BASE = "http://localhost:3000";
   const INGEST_URL = `${LOCAL_BASE}/api/scrape/centris/ingest`;
   const MANIFEST_URL = `${LOCAL_BASE}/api/ingest/quebec-manifest`;
@@ -109,9 +110,11 @@
       <input id="qc-segment-key" placeholder="segment key" style="padding:8px;border-radius:10px;border:1px solid #334155;background:#111827;color:#fff" />
       <input id="qc-page-number" type="number" min="1" value="1" style="padding:8px;border-radius:10px;border:1px solid #334155;background:#111827;color:#fff" />
       <label style="display:flex;align-items:center;gap:8px"><input id="qc-terminal-page" type="checkbox" /> Terminal page</label>
+      <button id="qc-open-task" style="padding:8px;border:0;border-radius:10px;background:#7c3aed;color:#fff">Open task page</button>
       <button id="qc-send-json" style="padding:8px;border:0;border-radius:10px;background:#059669;color:#fff">Send latest JSON</button>
       <button id="qc-send-html" style="padding:8px;border:0;border-radius:10px;background:#475569;color:#fff">Send page HTML</button>
       <div id="qc-task-hint" style="color:#cbd5e1"></div>
+      <div id="qc-task-url" style="color:#94a3b8;word-break:break-word"></div>
     </div>
   `;
   document.body.appendChild(panel);
@@ -121,6 +124,7 @@
   const pageNumberEl = panel.querySelector("#qc-page-number");
   const terminalEl = panel.querySelector("#qc-terminal-page");
   const taskHintEl = panel.querySelector("#qc-task-hint");
+  const taskUrlEl = panel.querySelector("#qc-task-url");
 
   function updateStatus(text) {
     statusEl.textContent = text;
@@ -128,7 +132,7 @@
 
   async function loadNextTask() {
     updateStatus("Loading next task…");
-    const response = await request("GET", `${MANIFEST_URL}?source=${SOURCE}&next=1&dueOnly=1`);
+    const response = await request("GET", `${MANIFEST_URL}?source=${SOURCE}&scope=${SCOPE}&next=1&dueOnly=1`);
     activeTask = response.item || null;
     if (!activeTask) {
       updateStatus("No due tasks.");
@@ -137,6 +141,7 @@
     segmentKeyEl.value = activeTask.segmentKey;
     pageNumberEl.value = String(activeTask.resumePageNumber || 1);
     taskHintEl.textContent = activeTask.operatorHint || "";
+    taskUrlEl.textContent = activeTask.searchUrl || "";
     updateStatus(`Loaded task ${activeTask.segmentKey}`);
   }
 
@@ -169,6 +174,13 @@
   }
 
   panel.querySelector("#qc-next-task").addEventListener("click", () => loadNextTask().catch((error) => updateStatus(String(error))));
+  panel.querySelector("#qc-open-task").addEventListener("click", () => {
+    if (!activeTask?.searchUrl) {
+      updateStatus("No search URL available for this task.");
+      return;
+    }
+    window.location.href = activeTask.searchUrl;
+  });
   panel.querySelector("#qc-send-json").addEventListener("click", () => {
     if (!lastPayload) {
       updateStatus("No JSON payload captured yet.");

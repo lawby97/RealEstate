@@ -1,5 +1,7 @@
 import type { BrowserCaptureLane, BrowserCaptureSource } from "@/lib/browser-capture";
 
+export type QuebecCaptureScope = "quebec_full" | "greater_montreal_core";
+
 export interface QuebecCaptureManifestEntry {
   segmentKey: string;
   source: BrowserCaptureSource;
@@ -26,6 +28,8 @@ type RegionConfig = {
 };
 
 const SOURCES: BrowserCaptureSource[] = ["centris_ca", "realtor_ca", "duproprio_ca"];
+const GREATER_MONTREAL_SOURCES: BrowserCaptureSource[] = ["centris_ca", "duproprio_ca"];
+const GREATER_MONTREAL_REGION_KEYS = new Set(["montreal", "laval", "longueuil"]);
 
 const HIGH_VOLUME_REGIONS: RegionConfig[] = [
   { key: "montreal", label: "Montreal", market: "Montreal", cadenceHours: 24, priorityBoost: 120 },
@@ -89,6 +93,51 @@ const SOURCE_PRIORITY: Record<BrowserCaptureSource, number> = {
   duproprio_ca: 180,
 };
 
+const CENTRIS_REGION_SLUGS: Partial<Record<RegionConfig["key"], string>> = {
+  montreal: "montreal",
+  laval: "laval",
+  longueuil: "longueuil",
+};
+
+const DUPROPRIO_REGION_SLUGS: Partial<Record<RegionConfig["key"], string>> = {
+  montreal: "montreal",
+  laval: "laval",
+  longueuil: "monteregie-rive-sud-montreal",
+};
+
+function buildSearchUrl(
+  source: BrowserCaptureSource,
+  regionKey: RegionConfig["key"],
+  lane: BrowserCaptureLane
+): string | null {
+  if (source === "centris_ca") {
+    const regionSlug = CENTRIS_REGION_SLUGS[regionKey];
+    if (!regionSlug) return null;
+
+    const laneSlug =
+      lane === "broad_residential"
+        ? "properties~for-sale"
+        : lane === "small_bay_2to4"
+          ? "plexes~for-sale"
+          : "multi-family-properties~for-sale";
+
+    return `https://www.centris.ca/en/${laneSlug}~${regionSlug}`;
+  }
+
+  if (source === "duproprio_ca") {
+    const regionSlug = DUPROPRIO_REGION_SLUGS[regionKey];
+    if (!regionSlug) return null;
+
+    if (lane === "broad_residential") {
+      return `https://duproprio.com/en/${regionSlug}`;
+    }
+
+    return `https://duproprio.com/en/${regionSlug}/multiplex-for-sale`;
+  }
+
+  return null;
+}
+
 function buildOperatorHint(source: BrowserCaptureSource, regionLabel: string, lane: BrowserCaptureLane, priceMin: number, priceMax: number): string {
   const laneLabel =
     lane === "broad_residential"
@@ -98,7 +147,14 @@ function buildOperatorHint(source: BrowserCaptureSource, regionLabel: string, la
         : "5+ multifamily sale";
   const sourceLabel =
     source === "centris_ca" ? "Centris" : source === "realtor_ca" ? "Realtor" : "DuProprio";
-  return `${sourceLabel}: open ${regionLabel}, filter ${laneLabel}, and work the $${priceMin.toLocaleString()}-$${priceMax.toLocaleString()} band.`;
+  const priceBand = `$${priceMin.toLocaleString()}-$${priceMax.toLocaleString()}`;
+  if (lane === "broad_residential") {
+    return `${sourceLabel}: open ${regionLabel} residential results, then set the ${priceBand} price band manually.`;
+  }
+  if (source === "duproprio_ca") {
+    return `${sourceLabel}: open ${regionLabel} multiplex results, then keep only ${laneLabel} listings in the ${priceBand} price band.`;
+  }
+  return `${sourceLabel}: open ${regionLabel}, filter ${laneLabel}, and work the ${priceBand} band.`;
 }
 
 function buildManifestEntries(regions: RegionConfig[]): QuebecCaptureManifestEntry[] {
@@ -121,7 +177,7 @@ function buildManifestEntries(regions: RegionConfig[]): QuebecCaptureManifestEnt
             priority: SOURCE_PRIORITY[source] + LANE_PRIORITY[lane] + region.priorityBoost,
             cadenceHours: region.cadenceHours,
             locationToken: region.label,
-            searchUrl: null,
+            searchUrl: buildSearchUrl(source, region.key, lane),
             operatorHint: buildOperatorHint(source, region.label, lane, priceMin, priceMax),
           });
         }
@@ -137,7 +193,23 @@ export const QUEBEC_CAPTURE_MANIFEST: QuebecCaptureManifestEntry[] = [
   ...buildManifestEntries(REGIONAL_SWEEPS),
 ].sort((left, right) => right.priority - left.priority || left.segmentKey.localeCompare(right.segmentKey));
 
-export function getQuebecCaptureManifest(source?: BrowserCaptureSource | null): QuebecCaptureManifestEntry[] {
-  if (!source) return QUEBEC_CAPTURE_MANIFEST;
-  return QUEBEC_CAPTURE_MANIFEST.filter((entry) => entry.source === source);
+function filterByScope(entries: QuebecCaptureManifestEntry[], scope: QuebecCaptureScope): QuebecCaptureManifestEntry[] {
+  if (scope === "greater_montreal_core") {
+    return entries.filter(
+      (entry) =>
+        GREATER_MONTREAL_REGION_KEYS.has(entry.regionKey) &&
+        GREATER_MONTREAL_SOURCES.includes(entry.source)
+    );
+  }
+
+  return entries;
+}
+
+export function getQuebecCaptureManifest(
+  source?: BrowserCaptureSource | null,
+  scope: QuebecCaptureScope = "quebec_full"
+): QuebecCaptureManifestEntry[] {
+  const scopedEntries = filterByScope(QUEBEC_CAPTURE_MANIFEST, scope);
+  if (!source) return scopedEntries;
+  return scopedEntries.filter((entry) => entry.source === source);
 }

@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getQuebecCaptureManifest } from "@/lib/quebec-capture-manifest";
 import type { BrowserCaptureLane, BrowserCaptureSource } from "@/lib/browser-capture";
+import type { QuebecCaptureScope } from "@/lib/quebec-capture-manifest";
 
 function parseArg(name: string, fallback: string): string {
   const entry = process.argv.find((arg) => arg.startsWith(`--${name}=`));
@@ -15,10 +16,11 @@ function hoursSince(date: Date | null): number | null {
 async function main() {
   const source = (parseArg("source", "") || null) as BrowserCaptureSource | null;
   const lane = (parseArg("lane", "") || null) as BrowserCaptureLane | null;
+  const scope = (parseArg("scope", "") || "quebec_full") as QuebecCaptureScope;
   const limit = Math.min(Math.max(parseInt(parseArg("limit", "25"), 10), 1), 250);
   const dueOnly = parseArg("dueOnly", "1") === "1";
 
-  const manifest = getQuebecCaptureManifest(source).filter((entry) => !lane || entry.lane === lane);
+  const manifest = getQuebecCaptureManifest(source, scope).filter((entry) => !lane || entry.lane === lane);
   const states = await prisma.captureManifestState.findMany({
     where: source ? { source } : undefined,
   });
@@ -38,8 +40,10 @@ async function main() {
         source: entry.source,
         market: entry.market,
         region: entry.regionLabel,
+        scope,
         lane: entry.lane,
         priceBand: `${entry.priceMin}-${entry.priceMax}`,
+        searchUrl: entry.searchUrl,
         priority: entry.priority,
         cadenceHours: entry.cadenceHours,
         dueNow,
@@ -57,7 +61,7 @@ async function main() {
       right.priority - left.priority
     );
 
-  console.log(JSON.stringify({ total: items.length, items: items.slice(0, limit) }, null, 2));
+  console.log(JSON.stringify({ scope, total: items.length, items: items.slice(0, limit) }, null, 2));
 }
 
 main()

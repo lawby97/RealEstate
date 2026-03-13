@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { getQuebecCaptureManifest } from "@/lib/quebec-capture-manifest";
 import type { BrowserCaptureSource, BrowserCaptureLane } from "@/lib/browser-capture";
+import type { QuebecCaptureScope } from "@/lib/quebec-capture-manifest";
 
 function hoursSince(dateIso: string | null): number | null {
   if (!dateIso) return null;
@@ -12,11 +13,12 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const source = (searchParams.get("source") as BrowserCaptureSource | null) ?? null;
   const lane = (searchParams.get("lane") as BrowserCaptureLane | null) ?? null;
+  const scope = (searchParams.get("scope") as QuebecCaptureScope | null) ?? "quebec_full";
   const nextOnly = searchParams.get("next") === "1" || searchParams.get("next") === "true";
   const dueOnly = searchParams.get("dueOnly") === "1" || searchParams.get("dueOnly") === "true";
   const limit = Math.min(Math.max(parseInt(searchParams.get("limit") ?? "50", 10), 1), 250);
 
-  const manifest = getQuebecCaptureManifest(source).filter((entry) => !lane || entry.lane === lane);
+  const manifest = getQuebecCaptureManifest(source, scope).filter((entry) => !lane || entry.lane === lane);
   const states = await prisma.captureManifestState.findMany({
     where: source ? { source } : undefined,
   });
@@ -68,6 +70,7 @@ export async function GET(req: Request) {
   if (nextOnly) {
     return Response.json({
       ok: true,
+      scope,
       item: entries[0] ?? null,
       total: entries.length,
     });
@@ -75,6 +78,7 @@ export async function GET(req: Request) {
 
   return Response.json({
     ok: true,
+    scope,
     total: entries.length,
     items: entries.slice(0, limit),
   });
