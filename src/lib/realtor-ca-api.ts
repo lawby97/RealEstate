@@ -101,7 +101,21 @@ function inferUnitsFromText(text: string): number | null {
   return words[token] ?? null;
 }
 
+function isLikelyRoomingHouseBungalow(description: string | null): boolean {
+  const text = (description ?? "").toLowerCase();
+  if (!text) return false;
+
+  const hasBungalowSignal = /\bplain[-\s]?pied\b|\bbungalow\b/.test(text);
+  const hasRoomRentalSignal = /lou[ée]e?\s+(?:pr[ée]sentement\s+)?en chambres|rented\s+(?:by|as)\s+rooms?/.test(text);
+  const hasBedroomCountSignal = /\b5\s+(?:chambres?|bedrooms?)\b/.test(text);
+  const hasExplicitUnitSignal = /\b(?:5|five|cinq)\s*(?:unit|units|unites?|logements?|apartments?|appartements?)\b/.test(text);
+
+  return hasBungalowSignal && hasRoomRentalSignal && hasBedroomCountSignal && !hasExplicitUnitSignal;
+}
+
 function inferUnits(raw: Record<string, unknown>, propertyType: string, description: string | null): number {
+  if (isLikelyRoomingHouseBungalow(description)) return 1;
+
   const prop = (raw.Property ?? raw.property ?? {}) as Record<string, unknown>;
   const building = (raw.Building ?? raw.building ?? {}) as Record<string, unknown>;
   const direct =
@@ -135,6 +149,11 @@ function propertyTypeSpecificityScore(value: string): number {
 }
 
 function resolvePropertyType(raw: Record<string, unknown>, prop: Record<string, unknown>, building: Record<string, unknown>): string {
+  const description = String(
+    raw.PublicRemarks ?? raw.public_remarks ?? raw.publicRemarks ?? raw.description ?? raw.remarks ?? ""
+  ).trim();
+  if (isLikelyRoomingHouseBungalow(description)) return "Single Family";
+
   const ownershipType = String(
     raw.OwnershipType ??
     raw.ownershipType ??

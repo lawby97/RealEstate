@@ -61,7 +61,7 @@ type UtilityResponsibilityProfile = "tenant_metered" | "landlord_paid" | "unknow
 
 const OPERATING_EXPENSE_BASELINES = {
   small_bay_existing: {
-    managementFeePct: 0.05,
+    managementFeePct: 0,
     insurance: {
       basis: "annual_per_unit",
       value: 700,
@@ -94,7 +94,7 @@ const OPERATING_EXPENSE_BASELINES = {
     },
   },
   multifamily_existing: {
-    managementFeePct: 0.04,
+    managementFeePct: 0,
     insurance: {
       basis: "annual_per_unit",
       value: 550,
@@ -127,7 +127,7 @@ const OPERATING_EXPENSE_BASELINES = {
     },
   },
   residential_new_construction: {
-    managementFeePct: 0.04,
+    managementFeePct: 0,
     insurance: {
       basis: "annual_per_unit",
       value: 450,
@@ -477,7 +477,9 @@ function buildManagementLine(params: {
       context:
         source === "profile_default"
           ? "Using the investor's saved average management fee."
-          : "Using the asset-level management baseline for this property type and deal stage.",
+          : managementRate > 0
+            ? "Using the asset-level management baseline for this property type and deal stage."
+            : "No professional management fee is included by default; add one if the asset will be third-party managed.",
       formula: `${currencyText(params.effectiveGrossIncome)} EGI x ${percentText(managementRate)} = ${currencyText(annualAmount)} per year`,
     }),
     inputMode: "rate",
@@ -562,12 +564,11 @@ function propertyTaxSourceDetail(estimate: PropertyTaxEstimate): string {
 }
 
 function propertyTaxDescription(estimate: PropertyTaxEstimate): string {
-  const assessedValueDetail =
-    estimate.assessedValue != null
-      ? `Current tax base estimate is ${currencyText(estimate.assessedValue)}.`
-      : "Exact assessed or taxable value was not available in the listing source.";
+  if (estimate.method === "exact_bill") {
+    return `Annual property tax uses the source-provided tax amount. ${methodConfidenceText(estimate)}.`;
+  }
 
-  return `Annual property tax estimate built from the Canadian property tax hierarchy. ${methodConfidenceText(estimate)}. ${assessedValueDetail}`;
+  return `Annual property tax estimate built from the Canadian property tax hierarchy. ${methodConfidenceText(estimate)}.`;
 }
 
 function buildPropertyTaxLine(
@@ -894,61 +895,6 @@ export function overridePropertyTaxAmount(
   return {
     ...rebuilt,
     inputMode: mode,
-    amountAnnual: {
-      ...rebuilt.amountAnnual,
-      source: "user_override",
-      label: propertyTaxSourceDetail(nextEstimate),
-    },
-    rate: {
-      ...rebuilt.rate,
-      source: "user_override",
-      label: propertyTaxSourceDetail(nextEstimate),
-    },
-  };
-}
-
-export function overridePropertyTaxAssessedValue(
-  item: OperatingExpenseLineItem,
-  assessedValue: number,
-  purchasePrice: number
-): OperatingExpenseLineItem {
-  if (item.key !== "property_tax" || !item.propertyTaxEstimate) {
-    return item;
-  }
-
-  const sanitizedAssessedValue = roundMoney(Math.max(0, assessedValue));
-  const appliedRate = item.propertyTaxEstimate.appliedRate;
-  if (sanitizedAssessedValue <= 0 || appliedRate == null) {
-    return {
-      ...item,
-      propertyTaxEstimate: {
-        ...item.propertyTaxEstimate,
-        assessedValue: sanitizedAssessedValue > 0 ? sanitizedAssessedValue : null,
-        assessedValueSource: sanitizedAssessedValue > 0 ? "user_override" : "not_available",
-      },
-    };
-  }
-
-  const amountAnnual = roundMoney(sanitizedAssessedValue * appliedRate);
-  const nextEstimate: PropertyTaxEstimate = {
-    ...item.propertyTaxEstimate,
-    amountAnnual,
-    assessedValue: sanitizedAssessedValue,
-    assessedValueSource: "user_override",
-    method: "assessed_value_x_official_rate",
-    confidence: "high",
-    source: "user_override",
-    effectiveRateVsPrice: purchasePrice > 0 ? roundRate(amountAnnual / purchasePrice) : null,
-    effectiveRateVsAssessment: roundRate(appliedRate),
-    sourceSummary: `User-entered assessed value applied to ${item.propertyTaxEstimate.sourceLabel ?? "the official rate"}.`,
-    formulaSummary: `${currencyText(sanitizedAssessedValue)} assessed value × ${percentText(appliedRate)} official rate = ${currencyText(amountAnnual)} per year`,
-    fallbackReason: null,
-  };
-
-  const rebuilt = buildPropertyTaxLine(nextEstimate);
-  return {
-    ...rebuilt,
-    inputMode: item.inputMode === "monthly" ? "monthly" : "annual",
     amountAnnual: {
       ...rebuilt.amountAnnual,
       source: "user_override",

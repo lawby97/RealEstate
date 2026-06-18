@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ProvenanceBadge } from "@/components/listing/ProvenanceBadge";
 import {
   type CashflowProjectionYear,
@@ -17,7 +17,6 @@ import {
   operatingExpenseInputModeLabel,
   operatingExpensePercentBasisLabel,
   overrideOperatingExpenseInput,
-  overridePropertyTaxAssessedValue,
   getOperatingExpenseInputValue,
   switchOperatingExpenseInputMode,
   toFinanceOperatingExpenseItems,
@@ -39,6 +38,36 @@ import type {
 
 type DownPaymentInputMode = "percent" | "amount";
 type BridgeAdvanceInputMode = "percent" | "amount";
+type DecisionTone = "green" | "amber" | "red" | "blue" | "slate";
+type PlaybookReviewMapItem = {
+  href: string;
+  label: string;
+  detail: string;
+};
+type ModelControlItem = {
+  label: string;
+  value: string;
+  detail: string;
+  href: string;
+  action: string;
+  tone: DecisionTone;
+};
+type AssumptionEditGuideItem = {
+  label: string;
+  value: string;
+  detail: string;
+  href: string;
+  tone: DecisionTone;
+};
+type ModelOverrideSummary = {
+  count: number;
+  labels: string[];
+};
+type CashflowBridgeStep = {
+  label: string;
+  value: string;
+  detail: string;
+};
 
 const UNDERWRITING_LABELS: Record<StrategyModel["underwritingMode"], string> = {
   current_income: "Current income underwriting",
@@ -83,11 +112,13 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
   const [assumptions, setAssumptions] = useState<ScenarioAssumptions>(model.assumptions);
   const [unitRentSchedule, setUnitRentSchedule] = useState<StrategyUnitRentLineItem[]>(model.unitRentSchedule);
   const [operatingExpensesExpanded, setOperatingExpensesExpanded] = useState(true);
+  const [outcomeDetailsOpen, setOutcomeDetailsOpen] = useState(false);
   const [newExpenseLabel, setNewExpenseLabel] = useState("");
   const [newExpenseMode, setNewExpenseMode] = useState<OperatingExpenseInputMode>("annual");
   const [downPaymentInputMode, setDownPaymentInputMode] = useState<DownPaymentInputMode>("percent");
   const [bridgeAdvanceInputMode, setBridgeAdvanceInputMode] = useState<BridgeAdvanceInputMode>("percent");
   const [bridgeEnabled, setBridgeEnabled] = useState(model.requiresBridgeLoan);
+  const currentRentDrivesProjection = usesCurrentRentForProjection(model);
   const showModeledUnits =
     model.modeledUnits.value > 1 &&
     !HIDE_MODELED_UNITS_FOR_ASSET_TYPES.has(model.assetType);
@@ -108,26 +139,37 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
     ownerOccupiedPrimaryHome: model.ownerOccupied,
   });
   const maxAllowedLtv = downPaymentRule.maxLtvPct;
-  const constrainedLtv = clamp(assumptions.ltvPct.value, 0, maxAllowedLtv);
+  const requestedLtv = clamp(assumptions.ltvPct.value, 0, 1);
   const constrainedTakeoutLtv = clamp(assumptions.takeoutLtvPct.value, 0, maxAllowedLtv);
-  const effectivePermanentLtv = bridgeEnabled ? constrainedTakeoutLtv : constrainedLtv;
-  const downPaymentAmount = roundTo(financedBasis * (1 - constrainedLtv), 2);
-  const downPaymentPct = basePrice > 0 ? clamp(downPaymentAmount / basePrice, downPaymentRule.minDownPaymentPct, 1) : 0;
+  const effectivePermanentLtv = bridgeEnabled ? constrainedTakeoutLtv : requestedLtv;
+  const downPaymentAmount = roundTo(financedBasis * (1 - requestedLtv), 2);
+  const downPaymentPct = basePrice > 0 ? clamp(downPaymentAmount / basePrice, 0, 1) : 0;
   const takeoutEquityAmount = roundTo(financedBasis * (1 - constrainedTakeoutLtv), 2);
   const minimumDownPaymentAmount = roundTo(
     downPaymentRule.minDownPaymentAmount ?? basePrice * downPaymentRule.minDownPaymentPct,
     2
   );
+  const effectiveMinimumDownPaymentAmount = Math.max(
+    minimumDownPaymentAmount,
+    roundTo(financedBasis * (1 - maxAllowedLtv), 2)
+  );
+  const downPaymentBelowModeledMinimum =
+    !bridgeEnabled && downPaymentAmount + 0.01 < effectiveMinimumDownPaymentAmount;
   const modeledRentAverage =
     unitRentSchedule.length > 0
       ? averageUnitRent(unitRentSchedule, "modeledRent")
       : modeledRentPerUnit.value;
+  const unitMonthlyRentsForProjection = projectionUnitMonthlyRents(
+    unitRentSchedule,
+    model.modeledUnits.value
+  );
   const financeOperatingExpenses = toFinanceOperatingExpenseItems(assumptions.operatingExpenses);
 
   const modeledResult = computeBuyAndHold({
     price: basePrice,
     units: Math.max(0, Math.round(model.modeledUnits.value)),
     avgMonthlyRentPerUnit: Math.max(0, modeledRentAverage),
+    unitMonthlyRents: unitMonthlyRentsForProjection,
     vacancyRate: clamp(assumptions.vacancyRate.value, 0, 0.25),
     operatingExpenseItems: financeOperatingExpenses,
     mortgageRate: clamp(assumptions.mortgageRate.value, 0, 0.2),
@@ -176,6 +218,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
       price: basePrice,
       units: Math.max(0, Math.round(model.modeledUnits.value)),
       avgMonthlyRentPerUnit: Math.max(0, modeledRentAverage),
+      unitMonthlyRents: unitMonthlyRentsForProjection,
       vacancyRate: clamp(assumptions.vacancyRate.value, 0, 0.25),
       operatingExpenseItems: financeOperatingExpenses,
       mortgageRate: clamp(assumptions.mortgageRate.value, 0, 0.2),
@@ -216,14 +259,283 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
     projectionStartValue: modeledStabilizedValue ?? modeledResult.basisPrice,
   });
   const cashflowHighlights = projectionHighlights(cashflowProjection.years);
+  const yearOneAnnualCashflow = yearOneProjection?.annualCashflow ?? modeledResult.annualCashflow;
+  const yearOneMonthlyCashflow = yearOneAnnualCashflow / 12;
+  const yearOneDebtService = yearOneProjection?.annualDebtService ?? modeledResult.annualDebtService;
+  const modeledUnitCount = Math.max(0, Math.round(model.modeledUnits.value));
+  const vacancyImpact = modeledResult.grossScheduledRent - modeledResult.effectiveGrossIncome;
+  const rentRollStepValue =
+    unitMonthlyRentsForProjection && unitMonthlyRentsForProjection.length > 0
+      ? `${unitMonthlyRentsForProjection.length} unit rents summed`
+      : `${modeledUnitCount} units x ${currency(modeledRentAverage)}/mo`;
+  const rentToCashflowSteps: CashflowBridgeStep[] = [
+    {
+      label: "Rent roll",
+      value: rentRollStepValue,
+      detail: `${currency(modeledResult.grossScheduledRent)}/yr gross scheduled rent`,
+    },
+    {
+      label: "Vacancy",
+      value: `${percent(assumptions.vacancyRate.value * 100)} vacancy`,
+      detail: `${currency(vacancyImpact)} vacancy impact -> ${currency(modeledResult.effectiveGrossIncome)} EGI`,
+    },
+    {
+      label: "Operating costs",
+      value: `-${currency(modeledResult.operatingExpenses)}`,
+      detail: `${percent(operatingExpenseRatioAssumption.value * 100)} of EGI -> ${currency(modeledResult.noi)} NOI`,
+    },
+    {
+      label: "Debt service",
+      value: `-${currency(yearOneDebtService)}`,
+      detail: bridgeEnabled
+        ? `${yearOneProjection ? cashflowPhaseLabel(yearOneProjection) : "Year 1 debt"}: ${currency(yearOneAnnualCashflow)} Y1 cashflow`
+        : `${currency(modeledResult.loanAmount)} loan @ ${percent(assumptions.mortgageRate.value * 100)} -> ${currency(yearOneAnnualCashflow)} Y1 cashflow`,
+    },
+  ];
+  const firstThreeCashflowYears = cashflowProjection.years.slice(0, 3);
+  const firstThreeCashflow = firstThreeCashflowYears.reduce(
+    (sum, year) => sum + year.annualCashflow,
+    0
+  );
+  const exitCashflowYear = cashflowProjection.years[cashflowProjection.years.length - 1];
+  const mobileCashflowYears =
+    exitCashflowYear && exitCashflowYear.year > 3
+      ? [...firstThreeCashflowYears, exitCashflowYear]
+      : cashflowProjection.years;
+  const rentRollBasis = buildRentRollBasis({
+    unitRentSchedule,
+    modeledUnitCount,
+    modeledRentAverage,
+    grossScheduledRentAnnual: yearOneProjection?.grossScheduledRent ?? modeledResult.grossScheduledRent,
+  });
   const hasStabilizationBridge = returnBridge.stabilizationLift != null;
   const showBridgeFacility = bridgeToggleAvailable;
+  const refiSurplusShortfall = bridgeEnabled && bridgeFacility ? bridgeFacility.refiSurplusShortfall : null;
+  const decisionConcerns = [
+    yearOneAnnualCashflow < 0
+      ? `Year 1 cashflow is negative by ${currency(Math.abs(yearOneAnnualCashflow))}.`
+      : null,
+    modeledResult.dscr > 0 && modeledResult.dscr < 1.25
+      ? `DSCR is ${number(modeledResult.dscr)}, below a common 1.25x lender screen.`
+      : null,
+    modeledResult.cashOnCashReturn != null && modeledResult.cashOnCashReturn < 0
+      ? `Cash-on-cash return is ${percent(modeledResult.cashOnCashReturn)}.`
+      : null,
+    refiSurplusShortfall != null && refiSurplusShortfall < 0
+      ? `Takeout shortfall is ${currency(Math.abs(refiSurplusShortfall))}.`
+      : null,
+    model.mliSelectAnalysis && !model.mliSelectAnalysis.qualified
+      ? `MLI Select is below the 50-point qualifying tier.`
+      : null,
+  ].filter((concern): concern is string => Boolean(concern));
+  const hasHardConcern =
+    yearOneAnnualCashflow < 0 ||
+    modeledResult.dscr < 1 ||
+    (refiSurplusShortfall != null && refiSurplusShortfall < 0);
+  const decisionTone: DecisionTone = hasHardConcern
+    ? "red"
+    : decisionConcerns.length > 0
+      ? "amber"
+      : "green";
+  const decisionHeadline =
+    decisionTone === "green"
+      ? "Looks ready for deeper underwriting"
+      : decisionTone === "amber"
+        ? "Promising, but verify the weak point"
+        : "Needs repair before offer-level underwriting";
+  const decisionCopy =
+    decisionConcerns[0] ??
+    "The model clears the first-pass cashflow, coverage, and capital-stack checks. Stress rents, expenses, and lender terms below before treating it as investable.";
   const yearOneRoiFormula = hasStabilizationBridge
     ? "Year 1 ROI = (Cash profit + Debt paydown + Appreciation + Stabilization lift) / Equity required"
     : "Year 1 ROI = (Cash profit + Debt paydown + Appreciation) / Equity required";
   const totalYearOneFormula = hasStabilizationBridge
     ? "Total Year 1 return = Cash profit + Debt paydown + Appreciation + Stabilization lift"
     : "Total Year 1 return = Cash profit + Debt paydown + Appreciation";
+  const reviewMapItems: PlaybookReviewMapItem[] = [
+    {
+      href: "#playbook-decision",
+      label: "Decision",
+      detail:
+        decisionConcerns.length === 0
+          ? "No first-pass flags"
+          : `${decisionConcerns.length} ${decisionConcerns.length === 1 ? "flag" : "flags"} to verify`,
+    },
+    {
+      href: "#playbook-assumptions",
+      label: "Assumptions",
+      detail: "Rents, debt, expenses",
+    },
+    {
+      href: "#playbook-outcome",
+      label: "Outcome",
+      detail: `NOI ${currency(modeledResult.noi)} / DSCR ${number(modeledResult.dscr)}`,
+    },
+    ...(showBridgeFacility
+      ? [
+          {
+            href: "#playbook-bridge",
+            label: "Bridge/takeout",
+            detail:
+              refiSurplusShortfall != null
+                ? `Takeout gap ${currency(refiSurplusShortfall)}`
+                : bridgeEnabled
+                  ? "Bridge enabled"
+                  : "Bridge off",
+          },
+        ]
+      : []),
+    ...(bridgeEnabled
+      ? [
+          {
+            href: "#playbook-y1-return",
+            label: "Y1 return",
+            detail: `${currency(returnBridge.totalYearOneReturn)} / ${percent(returnBridge.totalYearOneRoiPct)}`,
+          },
+        ]
+      : []),
+    {
+      href: "#playbook-cashflow",
+      label: "Cashflow",
+      detail: `Y1 ${currency(yearOneAnnualCashflow)} / 3Y ${currency(firstThreeCashflow)}`,
+    },
+    {
+      href: "#playbook-hold-return",
+      label: "Hold return",
+      detail: percent(returnBridge.holdPeriodRoiPct),
+    },
+    ...(model.mliSelectAnalysis
+      ? [
+          {
+            href: "#playbook-mli",
+            label: "MLI Select",
+            detail: `${number(model.mliSelectAnalysis.totalPoints)} points`,
+          },
+        ]
+      : []),
+    {
+      href: "#playbook-risks",
+      label: "Risks",
+      detail: "Basis, execution, financing",
+    },
+  ];
+  const overrideSummary = getModelOverrideSummary({
+    assumptions,
+    originalAssumptions: model.assumptions,
+    modeledRentPerUnit,
+    originalModeledRentPerUnit: model.modeledRentPerUnit,
+    unitRentSchedule,
+    originalUnitRentSchedule: model.unitRentSchedule,
+    bridgeEnabled,
+    originalBridgeEnabled: model.requiresBridgeLoan,
+  });
+  const firstModelLever = getFirstModelLever({
+    decisionTone,
+    yearOneAnnualCashflow,
+    modeledResult,
+    refiSurplusShortfall,
+    decisionConcerns,
+    bridgeEnabled,
+  });
+  const modelControlItems: ModelControlItem[] = [
+    {
+      label: "First lever",
+      value: firstModelLever.value,
+      detail: firstModelLever.detail,
+      href: firstModelLever.href,
+      action: firstModelLever.action,
+      tone: firstModelLever.tone,
+    },
+    {
+      label: "Changed inputs",
+      value: `${overrideSummary.count} override${overrideSummary.count === 1 ? "" : "s"}`,
+      detail:
+        overrideSummary.count > 0
+          ? overrideSummary.labels.slice(0, 4).join(", ")
+          : "Model is using source/profile assumptions.",
+      href: "#playbook-assumptions",
+      action: overrideSummary.count > 0 ? "Review overrides" : "Edit assumptions",
+      tone: overrideSummary.count > 0 ? "amber" : "green",
+    },
+    {
+      label: "Lender screen",
+      value: `${number(modeledResult.dscr)}x DSCR`,
+      detail:
+        modeledResult.dscr >= 1.25
+          ? `${percent(effectivePermanentLtv * 100)} LTV clears the common 1.25x DSCR read.`
+          : `Below the common 1.25x DSCR screen; check rent, expenses, rate, and leverage.`,
+      href: "#playbook-assumptions",
+      action: "Tune debt terms",
+      tone: modeledResult.dscr >= 1.25 ? "green" : modeledResult.dscr >= 1 ? "amber" : "red",
+    },
+    {
+      label: "Return read",
+      value: modeledResult.cashOnCashReturn != null ? percent(modeledResult.cashOnCashReturn) : "n/a",
+      detail: `${currency(yearOneAnnualCashflow)} Y1 cashflow · ${currency(firstThreeCashflow)} 3Y cashflow`,
+      href: "#playbook-cashflow",
+      action: "View cashflow",
+      tone:
+        yearOneAnnualCashflow >= 0 && (modeledResult.cashOnCashReturn ?? 0) >= 0
+          ? "green"
+          : "red",
+    },
+    {
+      label: bridgeEnabled ? "Takeout path" : "Debt path",
+      value:
+        refiSurplusShortfall != null
+          ? currency(refiSurplusShortfall)
+          : bridgeEnabled
+            ? "Bridge active"
+            : "Permanent debt",
+      detail:
+        refiSurplusShortfall != null
+          ? "Positive means modeled takeout surplus; negative means the refi does not repay the bridge."
+          : bridgeEnabled
+            ? "Bridge terms are active; verify carry and takeout proceeds."
+            : "Permanent debt is modeled from day one.",
+      href: bridgeEnabled ? "#playbook-bridge" : "#playbook-assumptions",
+      action: bridgeEnabled ? "Check bridge" : "Check leverage",
+      tone:
+        refiSurplusShortfall == null
+          ? "blue"
+          : refiSurplusShortfall >= 0
+            ? "green"
+            : "red",
+    },
+  ];
+  const assumptionGuideItems: AssumptionEditGuideItem[] = [
+    {
+      label: "1. Debt and cash",
+      value: `${currency(downPaymentAmount)} down`,
+      detail: `${percent(effectivePermanentLtv * 100)} modeled LTV · ${percent(assumptions.mortgageRate.value * 100)} rate. Start here when DSCR or cash required is the blocker.`,
+      href: "#playbook-financing",
+      tone: downPaymentBelowModeledMinimum ? "amber" : modeledResult.dscr >= 1.25 ? "green" : "red",
+    },
+    {
+      label: "2. Rent roll",
+      value: `${currency(modeledRentPerUnit.value)}/unit`,
+      detail:
+        unitRentSchedule.length > 0
+          ? `${unitRentSchedule.length} unit rents feed gross rent, NOI, and the hold-period table.`
+          : "This rent input drives gross rent, NOI, cashflow, and CoC.",
+      href: "#playbook-rent-inputs",
+      tone: yearOneAnnualCashflow >= 0 ? "green" : "amber",
+    },
+    {
+      label: "3. Operating costs",
+      value: `${currency(operatingExpenseTotal)}/yr`,
+      detail: `${percent(operatingExpenseRatioAssumption.value * 100)} of effective gross income. Property tax and management sit in this schedule.`,
+      href: "#playbook-expenses",
+      tone: operatingExpenseRatioAssumption.value <= 0.45 ? "green" : "amber",
+    },
+    {
+      label: "4. Hold and exit",
+      value: `${Math.round(assumptions.holdPeriodYears.value)} yr hold`,
+      detail: `${percent(assumptions.appreciationRateAnnual.value * 100)} appreciation · ${percent(assumptions.closingCostPct.value * 100)} closing costs.`,
+      href: "#playbook-exit",
+      tone: "blue",
+    },
+  ];
 
   const currentMarketRentSection =
     unitRentSchedule.length > 0 ? (
@@ -238,29 +550,54 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
         onChange={(unitIndex, value) => {
           setUnitRentSchedule((prev) => {
             const next = prev.map((unit, index) =>
-              index === unitIndex
-                ? {
-                    ...unit,
-                    currentMarketRent: {
-                      ...unit.currentMarketRent,
-                      value: Math.max(0, value),
-                      source: "user_override" as const,
-                      label: "User override",
-                    },
-                  }
-                : unit
+              {
+                if (index !== unitIndex) return unit;
+                const nextRent = {
+                  ...unit.currentMarketRent,
+                  value: Math.max(0, value),
+                  source: "user_override" as const,
+                  label: "User override",
+                };
+
+                return {
+                  ...unit,
+                  currentMarketRent: nextRent,
+                  modeledRent: currentRentDrivesProjection
+                    ? {
+                        ...unit.modeledRent,
+                        value: nextRent.value,
+                        source: "user_override" as const,
+                        label: "User override",
+                      }
+                    : unit.modeledRent,
+                };
+              }
             );
             onOverrideAssumption("currentMarketRent", averageUnitRent(next, "currentMarketRent"));
+            if (currentRentDrivesProjection) {
+              setModeledRentPerUnit({
+                ...modeledRentPerUnit,
+                value: averageUnitRent(next, "modeledRent"),
+                source: "user_override",
+                label: "User override",
+              });
+            }
             return next;
           });
         }}
         onReset={() => {
-          setUnitRentSchedule((prev) =>
-            prev.map((unit, index) => ({
+          setUnitRentSchedule((prev) => {
+            const next = prev.map((unit, index) => ({
               ...unit,
               currentMarketRent: model.unitRentSchedule[index]?.currentMarketRent ?? unit.currentMarketRent,
-            }))
-          );
+              modeledRent:
+                currentRentDrivesProjection
+                  ? model.unitRentSchedule[index]?.modeledRent ?? unit.modeledRent
+                  : unit.modeledRent,
+            }));
+            if (currentRentDrivesProjection) setModeledRentPerUnit(model.modeledRentPerUnit);
+            return next;
+          });
           setAssumptions((prev) => ({ ...prev, currentMarketRent: model.assumptions.currentMarketRent }));
         }}
       />
@@ -274,21 +611,39 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
         format="currency"
         min={0}
         step={25}
-        onChange={(value) => onOverrideAssumption("currentMarketRent", Math.max(0, value))}
-        onReset={() => setAssumptions((prev) => ({ ...prev, currentMarketRent: model.assumptions.currentMarketRent }))}
+        onChange={(value) => {
+          const nextRent = Math.max(0, value);
+          onOverrideAssumption("currentMarketRent", nextRent);
+          if (currentRentDrivesProjection) {
+            setModeledRentPerUnit({
+              ...modeledRentPerUnit,
+              value: nextRent,
+              source: "user_override",
+              label: "User override",
+            });
+          }
+        }}
+        onReset={() => {
+          setAssumptions((prev) => ({ ...prev, currentMarketRent: model.assumptions.currentMarketRent }));
+          if (currentRentDrivesProjection) setModeledRentPerUnit(model.modeledRentPerUnit);
+        }}
       />
     );
 
   const turnoverMarketRentSection =
     unitRentSchedule.length > 0 ? (
       <UnitRentScheduleRow
-        label="Market rent on turnover"
+        label={currentRentDrivesProjection ? "Underwriting rent by unit" : "Market rent on turnover"}
         averageAssumption={modeledRentPerUnit}
         unitRents={unitRentSchedule}
         rentKey="modeledRent"
         description={modeledRentDescription(model)}
         sourceDetail={modeledRentSourceDetail(model, modeledRentPerUnit, assumptions)}
-        formula="Market rent on turnover = Sum of unit turnover rents / Number of units"
+        formula={
+          currentRentDrivesProjection
+            ? "Underwriting rent = Sum of current unit rents / Number of units"
+            : "Market rent on turnover = Sum of unit turnover rents / Number of units"
+        }
         onChange={(unitIndex, value) => {
           setUnitRentSchedule((prev) => {
             const next = prev.map((unit, index) =>
@@ -325,7 +680,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
       />
     ) : (
       <EditableAssumptionRow
-        label="Market rent on turnover"
+        label={currentRentDrivesProjection ? "Underwriting rent" : "Market rent on turnover"}
         assumption={modeledRentPerUnit}
         description={modeledRentDescription(model)}
         sourceDetail={modeledRentSourceDetail(model, modeledRentPerUnit, assumptions)}
@@ -400,17 +755,6 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
     }));
   };
 
-  const onOverridePropertyTaxAssessedValue = (assessedValue: number) => {
-    setAssumptions((prev) => ({
-      ...prev,
-      operatingExpenses: prev.operatingExpenses.map((item) =>
-        item.key === "property_tax"
-          ? overridePropertyTaxAssessedValue(item, assessedValue, basePrice)
-          : item
-      ),
-    }));
-  };
-
   const onAddOperatingExpense = () => {
     const trimmedLabel = newExpenseLabel.trim();
     if (!trimmedLabel) return;
@@ -434,15 +778,17 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
 
   const onChangeDownPayment = (mode: DownPaymentInputMode, inputValue: number) => {
     const sanitizedValue = Math.max(0, inputValue);
-    const rawDownPaymentPct =
+    const requestedDownPaymentAmount =
       mode === "amount"
-        ? basePrice > 0
-          ? sanitizedValue / basePrice
-          : 0
-        : sanitizedValue;
-    const nextDownPaymentPct = clamp(rawDownPaymentPct, downPaymentRule.minDownPaymentPct, 1);
-    const nextDownPaymentAmount = roundTo(basePrice * nextDownPaymentPct, 2);
-    const nextLtvPct = clamp(1 - nextDownPaymentPct, 0, maxAllowedLtv);
+        ? sanitizedValue
+        : basePrice * sanitizedValue;
+    const nextDownPaymentAmount = roundTo(
+      clamp(requestedDownPaymentAmount, 0, financedBasis),
+      2
+    );
+    const nextDownPaymentPct = basePrice > 0 ? clamp(nextDownPaymentAmount / basePrice, 0, 1) : 0;
+    const nextLtvPct = financedBasis > 0 ? clamp(1 - nextDownPaymentAmount / financedBasis, 0, 1) : 0;
+    const belowModeledMinimum = nextDownPaymentAmount + 0.01 < effectiveMinimumDownPaymentAmount;
 
     setAssumptions((prev) => ({
       ...prev,
@@ -450,7 +796,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
         ...prev.ltvPct,
         value: nextLtvPct,
         source: "user_override",
-        label: `Source: User override. Calculation: ${currency(nextDownPaymentAmount)} down payment on ${currency(basePrice)} purchase price = ${percent(nextDownPaymentPct * 100)} down payment, which implies ${percent(nextLtvPct * 100)} LTV on ${currency(financedBasis)} financed basis. Minimum allowed down payment = ${currency(minimumDownPaymentAmount)} under ${downPaymentRule.programName}.`,
+        label: `Source: User override. Calculation: ${currency(nextDownPaymentAmount)} cash equity on ${currency(basePrice)} purchase price = ${percent(nextDownPaymentPct * 100)} down payment, which implies ${percent(nextLtvPct * 100)} LTV on ${currency(financedBasis)} debt sizing basis. Modeled program minimum = ${currency(effectiveMinimumDownPaymentAmount)} under ${downPaymentRule.programName}.${belowModeledMinimum ? " This is below the modeled rule and should be treated as a lender-exception scenario." : ""}`,
       },
     }));
   };
@@ -493,8 +839,10 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
   };
 
   return (
-    <div className="space-y-8">
-      <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-5">
+    <div className="min-w-0 max-w-full space-y-8">
+      <PlaybookReviewMap items={reviewMapItems} />
+
+      <section id="playbook-decision" className="scroll-mt-24 rounded-xl border border-slate-200 bg-slate-50/60 p-5">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0 max-w-3xl">
             <p className="text-sm leading-6 text-slate-700">{model.overview}</p>
@@ -534,6 +882,76 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
             />
           </div>
         </div>
+        <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-700">
+                Investor decision snapshot
+              </p>
+              <h4 className="mt-1 text-lg font-semibold text-slate-950">{decisionHeadline}</h4>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">{decisionCopy}</p>
+            </div>
+            <span className={`w-fit rounded-full border px-3 py-1.5 text-xs font-semibold ${decisionBadgeClass(decisionTone)}`}>
+              {decisionConcerns.length === 0
+                ? "No first-pass flags"
+                : `${decisionConcerns.length} ${decisionConcerns.length === 1 ? "flag" : "flags"}`}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+            <DecisionSnapshotCard
+              label="Year 1 cashflow"
+              value={currency(yearOneAnnualCashflow)}
+              detail={`${currency(yearOneMonthlyCashflow)}/mo after debt`}
+              tone={yearOneAnnualCashflow >= 0 ? "green" : "red"}
+            />
+            <DecisionSnapshotCard
+              label="DSCR"
+              value={number(modeledResult.dscr)}
+              detail={modeledResult.dscr >= 1.25 ? "Above common 1.25x screen" : "Below common 1.25x screen"}
+              tone={modeledResult.dscr >= 1.25 ? "green" : modeledResult.dscr >= 1 ? "amber" : "red"}
+            />
+            <DecisionSnapshotCard
+              label="CoC return"
+              value={modeledResult.cashOnCashReturn != null ? percent(modeledResult.cashOnCashReturn) : "n/a"}
+              detail="Annual cashflow / equity required"
+              tone={
+                modeledResult.cashOnCashReturn == null
+                  ? "slate"
+                  : modeledResult.cashOnCashReturn >= 0
+                    ? "green"
+                    : "red"
+              }
+            />
+            <DecisionSnapshotCard
+              label={`${firstThreeCashflowYears.length}-year cashflow`}
+              value={currency(firstThreeCashflow)}
+              detail="Cumulative operating carry"
+              tone={firstThreeCashflow >= 0 ? "green" : "red"}
+            />
+            <DecisionSnapshotCard
+              label={refiSurplusShortfall != null ? "Takeout gap" : "Debt path"}
+              value={
+                refiSurplusShortfall != null
+                  ? currency(refiSurplusShortfall)
+                  : `${percent(effectivePermanentLtv * 100)} LTV`
+              }
+              detail={
+                refiSurplusShortfall != null
+                  ? "Positive means modeled takeout surplus"
+                  : bridgeEnabled
+                    ? "Bridge off or takeout not sized"
+                    : "Permanent debt from day one"
+              }
+              tone={
+                refiSurplusShortfall == null
+                  ? "blue"
+                  : refiSurplusShortfall >= 0
+                    ? "green"
+                    : "red"
+              }
+            />
+          </div>
+        </div>
         <div className="mt-5">
           <h4 className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">
             Best-fit listing types
@@ -546,7 +964,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
         </div>
       </section>
 
-      <section>
+      <section id="playbook-path" className="scroll-mt-24">
         <h4 className="mb-3 text-sm font-semibold text-slate-700">Playbook for this path</h4>
         <div className="grid gap-3 lg:grid-cols-3">
           {model.strategyVariants.map((variant) => (
@@ -566,7 +984,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
         </div>
       </section>
 
-      <section>
+      <section id="playbook-assumptions" className="scroll-mt-24">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h4 className="text-sm font-semibold text-slate-700">Modeled assumptions</h4>
           <button
@@ -586,6 +1004,8 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
             Reset all assumptions
           </button>
         </div>
+        <ModelControlSummary items={modelControlItems} overrideSummary={overrideSummary} />
+        <AssumptionEditGuide items={assumptionGuideItems} />
         <div className="space-y-5 rounded-xl border border-slate-200 bg-slate-50/60 p-5">
           {showModeledUnits && (
             <StaticAssumptionRow
@@ -596,7 +1016,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
               formula="Modeled units = Inferred or listed rentable unit count used in underwriting"
             />
           )}
-          <div className="grid items-stretch gap-5 xl:grid-cols-[minmax(520px,1.08fr)_minmax(620px,1.2fr)]">
+          <div id="playbook-financing" className="scroll-mt-24 grid min-w-0 items-stretch gap-5 2xl:grid-cols-[minmax(0,1.08fr)_minmax(0,1.2fr)]">
             <div className="flex h-full flex-col gap-4">
               <SectionEyebrow>Financing structure</SectionEyebrow>
               {bridgeEnabled ? (
@@ -621,14 +1041,15 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
                   className="flex-1"
                   assumption={{
                     ...assumptions.ltvPct,
-                    value: constrainedLtv,
+                    value: requestedLtv,
                   }}
                   totalBasis={financedBasis}
                   purchasePrice={basePrice}
                   downPaymentPct={downPaymentPct}
                   downPaymentAmount={downPaymentAmount}
                   minDownPaymentPct={downPaymentRule.minDownPaymentPct}
-                  minDownPaymentAmount={minimumDownPaymentAmount}
+                  minDownPaymentAmount={effectiveMinimumDownPaymentAmount}
+                  belowModeledMinimum={downPaymentBelowModeledMinimum}
                   inputMode={downPaymentInputMode}
                   ruleLabel={downPaymentRule.label}
                   onChangeMode={setDownPaymentInputMode}
@@ -649,6 +1070,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
                     <div className="min-w-0 xl:min-w-[280px]">
                       <EditableAssumptionRow
                         label="Mortgage rate"
+                        testId="assumption-row-mortgage-rate"
                         assumption={assumptions.mortgageRate}
                         description="Annual interest rate used for annual debt service and amortization curve."
                         sourceDetail={assumptions.mortgageRate.label}
@@ -727,14 +1149,16 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
             </div>
           </div>
 
-          <AssumptionCluster title="Rent benchmarks">
-            <div className="grid gap-4 xl:grid-cols-2">
-              {currentMarketRentSection}
-              {turnoverMarketRentSection}
-            </div>
-          </AssumptionCluster>
+          <div id="playbook-rent-inputs" className="scroll-mt-24">
+            <AssumptionCluster title="Rent benchmarks">
+              <div className="grid gap-4 xl:grid-cols-2">
+                {currentMarketRentSection}
+                {turnoverMarketRentSection}
+              </div>
+            </AssumptionCluster>
+          </div>
 
-          <div className="space-y-3">
+          <div id="playbook-expenses" className="scroll-mt-24 space-y-3">
             <SectionEyebrow>Operating costs</SectionEyebrow>
             <OperatingExpenseSection
               ratioAssumption={operatingExpenseRatioAssumption}
@@ -751,7 +1175,6 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
               onToggleExpanded={() => setOperatingExpensesExpanded((prev) => !prev)}
               onChange={onOverrideOperatingExpense}
               onChangeMode={onChangeOperatingExpenseMode}
-              onPropertyTaxAssessedValueChange={onOverridePropertyTaxAssessedValue}
               onRemoveItem={(itemKey) =>
                 setAssumptions((prev) => ({
                   ...prev,
@@ -779,7 +1202,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
             />
           </div>
 
-          <div className="space-y-3">
+          <div id="playbook-exit" className="scroll-mt-24 space-y-3">
             <SectionEyebrow>Risk and exit assumptions</SectionEyebrow>
             <div className="grid gap-5 xl:grid-cols-2">
               <AssumptionCluster title="Hold and exit timing">
@@ -847,26 +1270,21 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
         </div>
       </section>
 
-      <section>
+      <section id="playbook-outcome" className="scroll-mt-24">
         <h4 className="mb-3 text-sm font-semibold text-slate-700">Modeled outcome</h4>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <CashflowFormulaBridge
+          steps={rentToCashflowSteps}
+          annualCashflow={yearOneAnnualCashflow}
+          monthlyCashflow={yearOneMonthlyCashflow}
+          dscr={modeledResult.dscr}
+          cashOnCashReturn={modeledResult.cashOnCashReturn}
+        />
+        <div className="playbook-outcome-priority-grid grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <MetricCard
             label="Gross scheduled rent"
             value={`${currency(modeledResult.grossScheduledRent)}/yr`}
             description="Total scheduled annual rent before vacancy and bad debt."
             formula="Gross scheduled rent = Units × Rent per unit × 12"
-          />
-          <MetricCard
-            label="Effective gross income"
-            value={`${currency(modeledResult.effectiveGrossIncome)}/yr`}
-            description="Revenue after vacancy assumptions and plus other income."
-            formula="Effective gross income = Gross scheduled rent × (1 - Vacancy rate) + Other income"
-          />
-          <MetricCard
-            label="Operating expenses"
-            value={`${currency(modeledResult.operatingExpenses)}/yr`}
-            description="Total annual operating expenses from the schedule below, including property tax and management."
-            formula="Operating expenses = Sum of all annual operating expense line items"
           />
           <MetricCard
             label="NOI"
@@ -899,70 +1317,124 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
             formula="DSCR = NOI / Annual debt service"
           />
           <MetricCard
-            label="Cap rate"
-            value={percent(modeledResult.capRate * 100)}
-            description={
-              showCapexMetrics
-                ? "Unlevered operating yield on all-in basis."
-                : "Unlevered operating yield on purchase price."
-            }
-            formula={showCapexMetrics ? "Cap rate = NOI / All-in basis" : "Cap rate = NOI / Purchase price"}
-          />
-          {showCapexMetrics && (
-            <MetricCard
-              label="All-in basis"
-              value={currency(modeledResult.basisPrice)}
-              description="Total basis before closing costs."
-              formula="All-in basis = Purchase price + Capex budget"
-            />
-          )}
-          {showCapexMetrics && (
-            <MetricCard
-              label="Capex budget"
-              value={currency(capexBudget)}
-              description="Execution budget required for repositioning or development."
-              formula={targetAreaSqFt != null ? `Capex budget = ${targetAreaSqFt.toLocaleString("en-CA")} sq ft × Reno cost per sq ft` : "Capex budget = Strategy capital plan assumption"}
-            />
-          )}
-          <MetricCard
-            label="Closing costs"
-            value={currency(modeledResult.closingCosts)}
-            description="Acquisition transaction cost estimate."
-            formula="Closing costs = Purchase price × Closing cost %"
-          />
-          <MetricCard
             label="Cash-on-cash return"
             value={modeledResult.cashOnCashReturn != null ? percent(modeledResult.cashOnCashReturn) : "n/a"}
             description="Year-one cash return relative to equity invested."
             formula="Cash-on-cash = Annual cashflow / Equity required"
           />
-          <MetricCard
-            label="Projected exit value"
-            value={currency(returnBridge.projectedValueAtExit)}
-            description="Projected value at exit from compounded appreciation."
-            formula="Projected exit value = Projection start value × (1 + Appreciation rate)^Hold years"
-          />
-          <MetricCard
-            label="Exit loan balance"
-            value={currency(returnBridge.exitLoanBalance)}
-            description="Estimated remaining principal at exit."
-            formula="Exit loan balance = Mortgage amortization balance after hold period"
-          />
-          <MetricCard
-            label="Hold-period ROI"
-            value={percent(returnBridge.holdPeriodRoiPct)}
-            description="Total hold-period return on invested equity."
-            formula="Hold-period ROI = Hold-period total return / Equity required"
-          />
-          {modeledStabilizedValue != null && (
-            <MetricCard
-              label="Stabilized value"
-              value={currency(modeledStabilizedValue)}
-              description="Purchase price proxy used as the stabilized-value anchor for the implied exit cap calculation."
-              formula="Stabilized value = Purchase price proxy"
-            />
-          )}
         </div>
+
+        <section
+          className="playbook-outcome-detail-disclosure mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white"
+          aria-label="Detailed outcome audit"
+          data-open={outcomeDetailsOpen ? "true" : "false"}
+        >
+          <button
+            type="button"
+            className="playbook-outcome-detail-summary flex w-full cursor-pointer flex-col gap-3 p-4 text-left md:flex-row md:items-center md:justify-between"
+            aria-expanded={outcomeDetailsOpen}
+            aria-controls="playbook-outcome-detail-grid"
+            onClick={() => setOutcomeDetailsOpen((open) => !open)}
+          >
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                Detailed outcome audit
+              </p>
+              <h5 className="mt-1 text-sm font-semibold text-slate-950">
+                Show valuation, basis, expense, and exit math
+              </h5>
+              <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+                Keep the operating decision readable, then open this when you want the full underwriting trace behind cap rate, basis, closing costs, and exit ROI.
+              </p>
+            </div>
+            <span className="w-fit rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+              {outcomeDetailsOpen ? "Hide detail metrics" : "Show detail metrics"}
+            </span>
+          </button>
+          {outcomeDetailsOpen && (
+          <div
+            id="playbook-outcome-detail-grid"
+            className="playbook-outcome-detail-grid grid gap-3 border-t border-slate-200 bg-slate-50/60 p-4 sm:grid-cols-2 xl:grid-cols-4"
+          >
+            <MetricCard
+              label="Effective gross income"
+              value={`${currency(modeledResult.effectiveGrossIncome)}/yr`}
+              description="Revenue after vacancy assumptions and plus other income."
+              formula="Effective gross income = Gross scheduled rent × (1 - Vacancy rate) + Other income"
+            />
+            <MetricCard
+              label="Operating expenses"
+              value={`${currency(modeledResult.operatingExpenses)}/yr`}
+              description="Total annual operating expenses from the schedule below, including property tax and management."
+              formula="Operating expenses = Sum of all annual operating expense line items"
+            />
+            <MetricCard
+              label="Monthly cashflow"
+              value={currency(modeledResult.monthlyCashflow)}
+              description="Average monthly carry based on annual cashflow."
+              formula="Monthly cashflow = Annual cashflow / 12"
+            />
+            <MetricCard
+              label="Cap rate"
+              value={percent(modeledResult.capRate * 100)}
+              description={
+                showCapexMetrics
+                  ? "Unlevered operating yield on all-in basis."
+                  : "Unlevered operating yield on purchase price."
+              }
+              formula={showCapexMetrics ? "Cap rate = NOI / All-in basis" : "Cap rate = NOI / Purchase price"}
+            />
+            {showCapexMetrics && (
+              <MetricCard
+                label="All-in basis"
+                value={currency(modeledResult.basisPrice)}
+                description="Total basis before closing costs."
+                formula="All-in basis = Purchase price + Capex budget"
+              />
+            )}
+            {showCapexMetrics && (
+              <MetricCard
+                label="Capex budget"
+                value={currency(capexBudget)}
+                description="Execution budget required for repositioning or development."
+                formula={targetAreaSqFt != null ? `Capex budget = ${targetAreaSqFt.toLocaleString("en-CA")} sq ft × Reno cost per sq ft` : "Capex budget = Strategy capital plan assumption"}
+              />
+            )}
+            <MetricCard
+              label="Closing costs"
+              value={currency(modeledResult.closingCosts)}
+              description="Acquisition transaction cost estimate."
+              formula="Closing costs = Purchase price × Closing cost %"
+            />
+            <MetricCard
+              label="Projected exit value"
+              value={currency(returnBridge.projectedValueAtExit)}
+              description="Projected value at exit from compounded appreciation."
+              formula="Projected exit value = Projection start value × (1 + Appreciation rate)^Hold years"
+            />
+            <MetricCard
+              label="Exit loan balance"
+              value={currency(returnBridge.exitLoanBalance)}
+              description="Estimated remaining principal at exit."
+              formula="Exit loan balance = Mortgage amortization balance after hold period"
+            />
+            <MetricCard
+              label="Hold-period ROI"
+              value={percent(returnBridge.holdPeriodRoiPct)}
+              description="Total hold-period return on invested equity."
+              formula="Hold-period ROI = Hold-period total return / Equity required"
+            />
+            {modeledStabilizedValue != null && (
+              <MetricCard
+                label="Stabilized value"
+                value={currency(modeledStabilizedValue)}
+                description="Purchase price proxy used as the stabilized-value anchor for the implied exit cap calculation."
+                formula="Stabilized value = Purchase price proxy"
+              />
+            )}
+          </div>
+          )}
+        </section>
         {targetAreaSqFt != null && (
           <p className="mt-3 text-xs text-slate-500">
             Capital budget basis: {targetAreaSqFt.toLocaleString("en-CA")} sq ft. {model.capitalPlan.label}
@@ -974,7 +1446,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
       </section>
 
       {showBridgeFacility && (
-        <section>
+        <section id="playbook-bridge" className="scroll-mt-24">
           <div className="mb-3 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <h4 className="text-sm font-semibold text-slate-700">Bridge facility</h4>
@@ -1185,7 +1657,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
       )}
 
       {bridgeEnabled && (
-        <section>
+        <section id="playbook-y1-return" className="scroll-mt-24">
           <h4 className="mb-3 text-sm font-semibold text-slate-700">Year 1 return stack</h4>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <MetricCard
@@ -1224,7 +1696,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
         </section>
       )}
 
-      <section>
+      <section id="playbook-hold-return" className="scroll-mt-24">
         <h4 className="mb-3 text-sm font-semibold text-slate-700">Hold-period return</h4>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <MetricCard
@@ -1248,7 +1720,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
         </div>
       </section>
 
-      <section>
+      <section id="playbook-cashflow" className="scroll-mt-24">
         <div className="mb-3">
           <div>
             <h4 className="text-sm font-semibold text-slate-700">Cashflow outlook</h4>
@@ -1276,14 +1748,90 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
           ))}
         </div>
 
-        <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 bg-white">
+        <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/70 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-blue-700">
+                Rent roll used by this table
+              </p>
+              <p className="mt-2 text-sm font-semibold text-slate-900">{rentRollBasis.headline}</p>
+              <p className="mt-1 text-sm leading-6 text-slate-600">{rentRollBasis.detail}</p>
+            </div>
+            <div className="grid shrink-0 grid-cols-2 gap-2 text-right sm:min-w-[320px]">
+              <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">Monthly roll</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{currency(rentRollBasis.monthlyRentRoll)}</p>
+              </div>
+              <div className="rounded-lg border border-blue-100 bg-white px-3 py-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">Annual gross</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{currency(rentRollBasis.grossScheduledRentAnnual)}</p>
+              </div>
+            </div>
+          </div>
+          {rentRollBasis.unitLine && (
+            <p className="mt-3 break-words rounded-lg border border-blue-100 bg-white px-3 py-2 font-mono text-[11px] leading-5 text-slate-600">
+              {rentRollBasis.unitLine}
+            </p>
+          )}
+        </div>
+
+        <div className="playbook-cashflow-mobile-grid mt-4 grid gap-3 md:hidden">
+          {mobileCashflowYears.map((year) => {
+            const cashflowTone =
+              year.annualCashflow > 0
+                ? "border-emerald-200 bg-emerald-50/80 text-emerald-900"
+                : year.annualCashflow < 0
+                  ? "border-rose-200 bg-rose-50/80 text-rose-900"
+                  : "border-slate-200 bg-slate-50 text-slate-900";
+            const dscrTone =
+              year.dscr >= 1.25
+                ? "text-emerald-700"
+                : year.dscr >= 1
+                  ? "text-amber-700"
+                  : "text-rose-700";
+
+            return (
+              <article
+                key={`cashflow-mobile-year-${year.year}`}
+                className={`rounded-xl border p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${cashflowTone}`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.12em] opacity-80">
+                      Year {year.year} · {cashflowPhaseLabel(year)}
+                    </p>
+                    <p className="mt-1 text-2xl font-semibold tabular-nums">
+                      {currency(year.annualCashflow)}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold opacity-80">
+                      {currency(year.monthlyCashflow)}/mo · {currency(year.cumulativeCashflow)} cumulative
+                    </p>
+                  </div>
+                  <span className={`shrink-0 rounded-full border border-white/70 bg-white/75 px-2.5 py-1 text-xs font-semibold ${dscrTone}`}>
+                    DSCR {number(year.dscr)}
+                  </span>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <CashflowMobileStat label="Monthly rent roll" value={currency(year.grossScheduledRent / 12)} />
+                  <CashflowMobileStat label="NOI" value={currency(year.noi)} />
+                  <CashflowMobileStat label="Bridge carry" value={currency(year.bridgeCarry)} />
+                  <CashflowMobileStat label="Permanent debt" value={currency(year.permanentDebtService)} />
+                </div>
+              </article>
+            );
+          })}
+        </div>
+
+        <div className="mt-4 hidden overflow-x-auto rounded-xl border border-slate-200 bg-white md:block">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.08em] text-slate-500">
               <tr>
                 <th className="px-4 py-3 font-semibold">Year</th>
                 <th className="px-4 py-3 font-semibold">Financing phase</th>
-                <th className="px-4 py-3 font-semibold">Rent / unit / mo</th>
-                <th className="px-4 py-3 font-semibold">Gross rent</th>
+                <th className="px-4 py-3 font-semibold">Avg rent / unit / mo</th>
+                <th className="px-4 py-3 font-semibold">Monthly rent roll</th>
+                <th className="px-4 py-3 font-semibold">Annual gross rent</th>
                 <th className="px-4 py-3 font-semibold">NOI</th>
                 <th className="px-4 py-3 font-semibold">Bridge carry</th>
                 <th className="px-4 py-3 font-semibold">Permanent debt</th>
@@ -1298,6 +1846,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
                   <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-900">Year {year.year}</td>
                   <td className="whitespace-nowrap px-4 py-3">{cashflowPhaseLabel(year)}</td>
                   <td className="whitespace-nowrap px-4 py-3">{currency(year.avgMonthlyRentPerUnit)}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{currency(year.grossScheduledRent / 12)}</td>
                   <td className="whitespace-nowrap px-4 py-3">{currency(year.grossScheduledRent)}</td>
                   <td className="whitespace-nowrap px-4 py-3">{currency(year.noi)}</td>
                   <td className="whitespace-nowrap px-4 py-3">{currency(year.bridgeCarry)}</td>
@@ -1313,7 +1862,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
       </section>
 
       {model.mliSelectAnalysis && (
-        <section>
+        <section id="playbook-mli" className="scroll-mt-24">
           <div className="mb-3">
             <h4 className="text-sm font-semibold text-slate-700">MLI Select scoring</h4>
             <p className="mt-1 text-sm leading-6 text-slate-600">
@@ -1398,7 +1947,7 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
         </section>
       )}
 
-      <section className="grid gap-4 lg:grid-cols-2">
+      <section id="playbook-risks" className="scroll-mt-24 grid gap-4 lg:grid-cols-2">
         <ListCard title="Model basis" items={model.modelBasis} />
         <ListCard title="Execution focus" items={model.executionPlan} />
         <ListCard title="Financing plan" items={model.financingPlan} />
@@ -1408,8 +1957,147 @@ export function StrategyPlaybookView({ model }: { model: StrategyModel }) {
   );
 }
 
+function PlaybookReviewMap({ items }: { items: PlaybookReviewMapItem[] }) {
+  return (
+    <nav
+      aria-label="Investment path review map"
+      className="rounded-xl border border-blue-200 bg-blue-50/70 p-4"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-blue-700">
+            Review map
+          </p>
+          <h4 className="mt-1 text-sm font-semibold text-slate-950">
+            Jump to the underwriting section you need.
+          </h4>
+        </div>
+        <p className="text-xs leading-5 text-slate-600">
+          Built for investor review: decision, assumptions, returns, cashflow, and risks.
+        </p>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        {items.map((item) => (
+          <a
+            key={item.href}
+            href={item.href}
+            className="rounded-lg border border-blue-100 bg-white px-3 py-2 text-left no-underline shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:border-blue-300 hover:bg-blue-50"
+          >
+            <span className="block text-xs font-semibold text-blue-700">{item.label}</span>
+            <span className="mt-1 block truncate text-[11px] font-medium text-slate-600">{item.detail}</span>
+          </a>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+function CashflowFormulaBridge({
+  steps,
+  annualCashflow,
+  monthlyCashflow,
+  dscr,
+  cashOnCashReturn,
+}: {
+  steps: CashflowBridgeStep[];
+  annualCashflow: number;
+  monthlyCashflow: number;
+  dscr: number;
+  cashOnCashReturn: number | null;
+}) {
+  const cashflowIsPositive = annualCashflow >= 0;
+
+  return (
+    <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+            Rent-to-cashflow bridge
+          </p>
+          <h5 className="mt-1 text-sm font-semibold text-slate-950">
+            The exact chain driving the year-one investor read.
+          </h5>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+            Start with the unit rent roll, then subtract vacancy, operating costs, and debt service. These are the same live assumptions used by the table below.
+          </p>
+        </div>
+        <div className={`rounded-xl border px-4 py-3 text-right ${
+          cashflowIsPositive
+            ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+            : "border-rose-200 bg-rose-50 text-rose-900"
+        }`}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em]">Y1 cashflow</p>
+          <p className="mt-1 text-lg font-black">{currency(annualCashflow)}</p>
+          <p className="text-xs font-semibold">{currency(monthlyCashflow)}/mo</p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-4">
+        {steps.map((step) => (
+          <div key={step.label} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-500">{step.label}</p>
+            <p className="mt-1 text-sm font-bold text-slate-950">{step.value}</p>
+            <p className="mt-1 text-xs leading-5 text-slate-600">{step.detail}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <CashflowBridgeFact label="DSCR" value={`${number(dscr)}x`} tone={dscr >= 1.25 ? "green" : dscr >= 1 ? "amber" : "red"} />
+        <CashflowBridgeFact
+          label="Cash-on-cash"
+          value={cashOnCashReturn != null ? percent(cashOnCashReturn) : "n/a"}
+          tone={cashOnCashReturn == null ? "slate" : cashOnCashReturn >= 0 ? "green" : "red"}
+        />
+        <CashflowBridgeFact
+          label="Monthly carry"
+          value={currency(monthlyCashflow)}
+          tone={cashflowIsPositive ? "green" : "red"}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CashflowBridgeFact({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone: "green" | "amber" | "red" | "slate";
+}) {
+  const toneClass =
+    tone === "green"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+      : tone === "amber"
+        ? "border-amber-200 bg-amber-50 text-amber-900"
+        : tone === "red"
+          ? "border-rose-200 bg-rose-50 text-rose-900"
+          : "border-slate-200 bg-slate-50 text-slate-700";
+
+  return (
+    <div className={`rounded-lg border px-3 py-2 ${toneClass}`}>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.1em] opacity-75">{label}</p>
+      <p className="mt-1 text-sm font-black">{value}</p>
+    </div>
+  );
+}
+
+function CashflowMobileStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-white/70 bg-white/70 px-2.5 py-2">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">{label}</p>
+      <p className="mt-1 font-semibold tabular-nums text-slate-950">{value}</p>
+    </div>
+  );
+}
+
 function EditableAssumptionRow(props: {
   label: string;
+  testId?: string;
   assumption: AssumptionValue<number>;
   description: string;
   sourceDetail: string;
@@ -1424,7 +2112,7 @@ function EditableAssumptionRow(props: {
   const displayValue = toDisplayValue(props.assumption.value, props.format);
 
   return (
-    <div className={SURFACE_CARD_CLASS}>
+    <div className={SURFACE_CARD_CLASS} data-testid={props.testId}>
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           <p className="text-sm font-semibold text-slate-800">{props.label}</p>
@@ -1571,16 +2259,36 @@ function DownPaymentAssumptionRow(props: {
   downPaymentAmount: number;
   minDownPaymentPct: number;
   minDownPaymentAmount: number;
+  belowModeledMinimum: boolean;
   inputMode: DownPaymentInputMode;
   ruleLabel: string;
   onChangeMode: (mode: DownPaymentInputMode) => void;
   onChange: (mode: DownPaymentInputMode, value: number) => void;
   onReset: () => void;
 }) {
-  const displayValue =
+  const committedDisplayValue =
     props.inputMode === "percent"
       ? toDisplayValue(props.downPaymentPct, "percent")
       : toDisplayValue(props.downPaymentAmount, "currency");
+  const [draftValue, setDraftValue] = useState(formatNumberInputDraft(committedDisplayValue));
+  const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraftValue(formatNumberInputDraft(committedDisplayValue));
+    }
+  }, [committedDisplayValue, isEditing, props.inputMode]);
+
+  function commitDraft(rawValue: string) {
+    if (rawValue.trim() === "") return;
+    const parsed = Number(rawValue);
+    if (!Number.isFinite(parsed)) return;
+    const nextValue =
+      props.inputMode === "percent"
+        ? fromDisplayValue(parsed, "percent")
+        : roundTo(parsed, 2);
+    props.onChange(props.inputMode, nextValue);
+  }
 
   return (
     <div className={`${SURFACE_CARD_CLASS} ${props.className ?? ""}`}>
@@ -1649,18 +2357,20 @@ function DownPaymentAssumptionRow(props: {
               {props.inputMode === "amount" && <span className="text-sm text-slate-500">$</span>}
               <input
                 type="number"
-                value={Number.isFinite(displayValue) ? displayValue : 0}
-                min={props.inputMode === "percent" ? props.minDownPaymentPct * 100 : props.minDownPaymentAmount}
-                max={props.inputMode === "percent" ? 100 : Math.max(props.purchasePrice, props.minDownPaymentAmount)}
+                value={draftValue}
+                min={0}
+                max={props.inputMode === "percent" ? 100 : Math.max(props.totalBasis, props.minDownPaymentAmount)}
                 step={props.inputMode === "percent" ? 0.5 : 1000}
+                onFocus={() => setIsEditing(true)}
                 onChange={(event) => {
-                  const parsed = Number(event.target.value);
-                  if (!Number.isFinite(parsed)) return;
-                  const nextValue =
-                    props.inputMode === "percent"
-                      ? fromDisplayValue(parsed, "percent")
-                      : roundTo(parsed, 2);
-                  props.onChange(props.inputMode, nextValue);
+                  const nextDraft = event.target.value;
+                  setIsEditing(true);
+                  setDraftValue(nextDraft);
+                  commitDraft(nextDraft);
+                }}
+                onBlur={() => {
+                  setIsEditing(false);
+                  setDraftValue(formatNumberInputDraft(committedDisplayValue));
                 }}
                 className="w-full appearance-none border-none bg-transparent px-1 py-2 text-right text-lg font-semibold text-slate-900 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
               />
@@ -1694,6 +2404,11 @@ function DownPaymentAssumptionRow(props: {
         <div className={SUBTLE_PANEL_CLASS}>
           <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Program rule</p>
           <p className="mt-2 text-xs leading-5 text-slate-600">{props.ruleLabel}</p>
+          {props.belowModeledMinimum ? (
+            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800">
+              This entry is below the modeled program minimum. Treat it as an exception test only until RBC, Desjardins, or another lender confirms the exact down payment, borrower treatment, and personal-debt reporting in writing.
+            </p>
+          ) : null}
         </div>
       </div>
     </div>
@@ -1943,21 +2658,29 @@ function PropertyTaxExpenseCard(props: {
     mode: OperatingExpenseInputMode,
     inputValue: number
   ) => void;
-  onAssessedValueChange: (value: number) => void;
   onReset: () => void;
 }) {
   const estimate = props.item.propertyTaxEstimate;
   if (!estimate) return null;
 
   const currentInputValue = roundTo(props.item.amountAnnual.value, 2);
-  const assessedValueDisplay = estimate.assessedValue != null ? toDisplayValue(estimate.assessedValue, "currency") : 0;
+  const isSourceAnnualTax = estimate.method === "exact_bill";
+  const cardTitle = isSourceAnnualTax ? "Property tax (Centris source)" : "Property tax estimate";
+  const taxBasisLabel = isSourceAnnualTax ? "Municipal + school" : "Fallback estimate";
+  const helperCopy = isSourceAnnualTax
+    ? "Using the annual municipal plus school tax captured from the source. This is treated as a fixed operating expense, not a tax-rate estimate."
+    : "Replace this fallback with the actual annual municipal plus school tax when the source amount is available.";
+  const annualTaxLabel = isSourceAnnualTax ? "Annual municipal + school tax" : "Annual property tax";
 
   return (
     <div className={SUBTLE_PANEL_CLASS}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="text-sm font-medium text-slate-800">{props.item.label}</p>
+            <p className="text-sm font-medium text-slate-800">{cardTitle}</p>
+            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500">
+              {taxBasisLabel}
+            </span>
             <PropertyTaxInfoTip description={props.item.description} estimate={estimate} sourceDetail={props.item.amountAnnual.label} />
           </div>
           <AssumptionMeta
@@ -1975,9 +2698,9 @@ function PropertyTaxExpenseCard(props: {
         </button>
       </div>
 
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      <div className="mt-3">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Annual property tax</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">{annualTaxLabel}</p>
           <div className={`${INPUT_SHELL_CLASS} mt-3 py-1`}>
             <span className="text-sm text-slate-500">$</span>
             <input
@@ -1994,25 +2717,7 @@ function PropertyTaxExpenseCard(props: {
             />
             <span className="text-sm text-slate-500">/yr</span>
           </div>
-        </div>
-
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Assessed value</p>
-          <div className={`${INPUT_SHELL_CLASS} mt-3 py-1`}>
-            <span className="text-sm text-slate-500">$</span>
-            <input
-              type="number"
-              value={Number.isFinite(assessedValueDisplay) ? assessedValueDisplay : 0}
-              min={0}
-              step={1000}
-              onChange={(event) => {
-                const parsed = Number(event.target.value);
-                if (!Number.isFinite(parsed)) return;
-                props.onAssessedValueChange(roundTo(parsed, 2));
-              }}
-              className="w-full appearance-none border-none bg-transparent px-1 py-2 text-right text-lg font-semibold text-slate-900 outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-            />
-          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-500">{helperCopy}</p>
         </div>
       </div>
     </div>
@@ -2038,7 +2743,6 @@ function OperatingExpenseSection(props: {
     inputValue: number
   ) => void;
   onChangeMode: (itemKey: OperatingExpenseLineItem["key"], mode: OperatingExpenseInputMode) => void;
-  onPropertyTaxAssessedValueChange: (value: number) => void;
   onRemoveItem: (itemKey: OperatingExpenseLineItem["key"]) => void;
   onResetItem: (itemKey: OperatingExpenseLineItem["key"]) => void;
   onResetAll: () => void;
@@ -2099,7 +2803,6 @@ function OperatingExpenseSection(props: {
                     key={item.key}
                     item={item}
                     onChange={props.onChange}
-                    onAssessedValueChange={props.onPropertyTaxAssessedValueChange}
                     onReset={() => props.onResetItem(item.key)}
                   />
                 );
@@ -2370,8 +3073,8 @@ function PropertyTaxInfoTip({
   sourceDetail: string;
 }) {
   const sourceSummary = summarizeSourceDetail(sourceDetail);
+  const isSourceAnnualTax = estimate.method === "exact_bill";
   const effectiveRate = estimate.effectiveRateVsPrice != null ? percent(estimate.effectiveRateVsPrice * 100) : "n/a";
-  const assessedValue = estimate.assessedValue != null ? currency(estimate.assessedValue) : "n/a";
 
   return (
     <div className="group relative">
@@ -2392,13 +3095,16 @@ function PropertyTaxInfoTip({
 
         <div className="mt-3 grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-2">
           <PropertyTaxTooltipRow label="Method" value={propertyTaxMethodLabel(estimate.method)} />
-          <PropertyTaxTooltipRow label="Jurisdiction" value={estimate.jurisdiction ?? "n/a"} />
-          <PropertyTaxTooltipRow label="Tax class" value={propertyTaxClassLabel(estimate.taxClass)} />
+          {!isSourceAnnualTax && (
+            <>
+              <PropertyTaxTooltipRow label="Jurisdiction" value={estimate.jurisdiction ?? "n/a"} />
+              <PropertyTaxTooltipRow label="Tax class" value={propertyTaxClassLabel(estimate.taxClass)} />
+              <PropertyTaxTooltipRow label="Area" value={estimate.areaLabel ?? "Citywide default"} />
+            </>
+          )}
           <PropertyTaxTooltipRow label="Tax year" value={estimate.taxYear != null ? String(estimate.taxYear) : "n/a"} />
-          <PropertyTaxTooltipRow label="Area" value={estimate.areaLabel ?? "Citywide default"} />
           <PropertyTaxTooltipRow label="Confidence" value={estimate.confidence} />
-          <PropertyTaxTooltipRow label="Effective vs price" value={effectiveRate} />
-          <PropertyTaxTooltipRow label="Assessed value" value={assessedValue} />
+          <PropertyTaxTooltipRow label={isSourceAnnualTax ? "Cost vs ask" : "Effective vs price"} value={effectiveRate} />
         </div>
 
         {estimate.fallbackReason && (
@@ -2409,7 +3115,9 @@ function PropertyTaxInfoTip({
         )}
 
         <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 p-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">Calculation</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-slate-500">
+            {isSourceAnnualTax ? "Source calculation" : "Calculation"}
+          </p>
           <p className="mt-1 font-mono text-[12px] leading-5 text-slate-700">{estimate.formulaSummary}</p>
         </div>
       </div>
@@ -2534,6 +3242,322 @@ function BridgeUsageBadge({
   );
 }
 
+function ModelControlSummary({
+  items,
+  overrideSummary,
+}: {
+  items: ModelControlItem[];
+  overrideSummary: ModelOverrideSummary;
+}) {
+  return (
+    <section
+      className="playbook-model-control mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.05)]"
+      data-testid="playbook-model-control"
+      aria-label="Live model controls"
+    >
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-blue-700">
+            Live model controls
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-slate-950">
+            What to change before reading the full assumption table
+          </h4>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+            This summary reacts to your edits below. It separates source/profile assumptions from listing-level overrides and points to the first lever that can change financeability.
+          </p>
+        </div>
+        <span
+          className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${
+            overrideSummary.count > 0
+              ? "border-amber-200 bg-amber-50 text-amber-800"
+              : "border-emerald-200 bg-emerald-50 text-emerald-800"
+          }`}
+        >
+          {overrideSummary.count} override{overrideSummary.count === 1 ? "" : "s"} active
+        </span>
+      </div>
+
+      <div className="playbook-model-control-grid mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        {items.map((item) => (
+          <a
+            key={item.label}
+            href={item.href}
+            className={`playbook-model-control-card rounded-xl border p-3 no-underline transition hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)] ${decisionCardClass(item.tone)}`}
+          >
+            <p className="text-[10px] font-semibold uppercase tracking-[0.13em] opacity-80">{item.label}</p>
+            <p className="mt-2 text-base font-semibold leading-tight">{item.value}</p>
+            <p className="mt-2 text-xs leading-5 opacity-85">{item.detail}</p>
+            <span className="mt-3 inline-flex text-xs font-semibold">
+              {item.action}
+            </span>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function AssumptionEditGuide({ items }: { items: AssumptionEditGuideItem[] }) {
+  return (
+    <section
+      className="playbook-assumption-guide mb-4 rounded-2xl border border-teal-200 bg-teal-50/60 p-4"
+      data-testid="playbook-assumption-guide"
+      aria-label="Recommended assumption edit order"
+    >
+      <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-teal-700">
+            Edit order
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-slate-950">
+            Change the inputs in the order an underwriter would test them
+          </h4>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+            Start with lender constraints, then rent, then operating costs, then exit timing. The detailed rows below still show every source and formula.
+          </p>
+        </div>
+        <span className="w-fit rounded-full border border-teal-200 bg-white px-3 py-1 text-xs font-semibold text-teal-800">
+          Assumption workflow
+        </span>
+      </div>
+
+      <div className="playbook-assumption-guide-grid mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {items.map((item) => (
+          <a
+            key={item.href}
+            href={item.href}
+            className={`playbook-assumption-guide-card rounded-xl border p-3 no-underline transition hover:-translate-y-0.5 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)] ${decisionCardClass(item.tone)}`}
+          >
+            <p className="text-[10px] font-semibold uppercase tracking-[0.13em] opacity-80">{item.label}</p>
+            <p className="mt-2 text-base font-semibold leading-tight">{item.value}</p>
+            <p className="mt-2 text-xs leading-5 opacity-85">{item.detail}</p>
+            <span className="mt-3 inline-flex text-xs font-semibold">Jump to inputs</span>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function DecisionSnapshotCard({
+  label,
+  value,
+  detail,
+  tone,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone: DecisionTone;
+}) {
+  const toneClass = decisionCardClass(tone);
+
+  return (
+    <div className={`rounded-xl border p-4 ${toneClass}`}>
+      <p className="text-[11px] font-semibold uppercase tracking-[0.12em] opacity-80">{label}</p>
+      <p className="mt-2 text-xl font-semibold">{value}</p>
+      <p className="mt-2 text-xs leading-5 opacity-80">{detail}</p>
+    </div>
+  );
+}
+
+function decisionBadgeClass(tone: DecisionTone): string {
+  const classes: Record<DecisionTone, string> = {
+    green: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    amber: "border-amber-200 bg-amber-50 text-amber-800",
+    red: "border-rose-200 bg-rose-50 text-rose-800",
+    blue: "border-blue-200 bg-blue-50 text-blue-800",
+    slate: "border-slate-200 bg-slate-50 text-slate-700",
+  };
+
+  return classes[tone];
+}
+
+function decisionCardClass(tone: DecisionTone): string {
+  const classes: Record<DecisionTone, string> = {
+    green: "border-emerald-200 bg-emerald-50 text-emerald-900",
+    amber: "border-amber-200 bg-amber-50 text-amber-900",
+    red: "border-rose-200 bg-rose-50 text-rose-900",
+    blue: "border-blue-200 bg-blue-50 text-blue-900",
+    slate: "border-slate-200 bg-slate-50 text-slate-800",
+  };
+
+  return classes[tone];
+}
+
+function getFirstModelLever({
+  decisionTone,
+  yearOneAnnualCashflow,
+  modeledResult,
+  refiSurplusShortfall,
+  decisionConcerns,
+  bridgeEnabled,
+}: {
+  decisionTone: DecisionTone;
+  yearOneAnnualCashflow: number;
+  modeledResult: { dscr: number; cashOnCashReturn: number | null };
+  refiSurplusShortfall: number | null;
+  decisionConcerns: string[];
+  bridgeEnabled: boolean;
+}): ModelControlItem {
+  if (yearOneAnnualCashflow < 0) {
+    return {
+      label: "First lever",
+      value: "Repair cashflow",
+      detail: "Start with rent, vacancy, operating costs, mortgage rate, and leverage before touching upside assumptions.",
+      href: "#playbook-assumptions",
+      action: "Edit cashflow inputs",
+      tone: "red",
+    };
+  }
+
+  if (modeledResult.dscr > 0 && modeledResult.dscr < 1.25) {
+    return {
+      label: "First lever",
+      value: "Lift DSCR",
+      detail: "Lender coverage is the constraint. Test lower leverage, better NOI, or longer amortization.",
+      href: "#playbook-assumptions",
+      action: "Tune debt terms",
+      tone: modeledResult.dscr >= 1 ? "amber" : "red",
+    };
+  }
+
+  if (refiSurplusShortfall != null && refiSurplusShortfall < 0) {
+    return {
+      label: "First lever",
+      value: "Fix takeout",
+      detail: "The refinance is short. Stress takeout LTV, bridge advance, NOI, and carry before relying on the debt wipe.",
+      href: "#playbook-bridge",
+      action: "Open bridge",
+      tone: "red",
+    };
+  }
+
+  if (modeledResult.cashOnCashReturn != null && modeledResult.cashOnCashReturn < 0) {
+    return {
+      label: "First lever",
+      value: "Improve CoC",
+      detail: "The cash return is negative. Review equity required, debt terms, rent, and expense assumptions.",
+      href: "#playbook-assumptions",
+      action: "Edit assumptions",
+      tone: "red",
+    };
+  }
+
+  if (decisionTone === "amber") {
+    return {
+      label: "First lever",
+      value: "Verify weak point",
+      detail: decisionConcerns[0] ?? "This path is plausible but still needs a lender or assumption check.",
+      href: bridgeEnabled ? "#playbook-bridge" : "#playbook-assumptions",
+      action: bridgeEnabled ? "Check bridge" : "Review inputs",
+      tone: "amber",
+    };
+  }
+
+  return {
+    label: "First lever",
+    value: "Stress test next",
+    detail: "The first-pass read is clean. Stress vacancy, rate, rent, expenses, and takeout before relying on it.",
+    href: "#playbook-assumptions",
+    action: "Stress assumptions",
+    tone: "green",
+  };
+}
+
+function getModelOverrideSummary({
+  assumptions,
+  originalAssumptions,
+  modeledRentPerUnit,
+  originalModeledRentPerUnit,
+  unitRentSchedule,
+  originalUnitRentSchedule,
+  bridgeEnabled,
+  originalBridgeEnabled,
+}: {
+  assumptions: ScenarioAssumptions;
+  originalAssumptions: ScenarioAssumptions;
+  modeledRentPerUnit: AssumptionValue<number>;
+  originalModeledRentPerUnit: AssumptionValue<number>;
+  unitRentSchedule: StrategyUnitRentLineItem[];
+  originalUnitRentSchedule: StrategyUnitRentLineItem[];
+  bridgeEnabled: boolean;
+  originalBridgeEnabled: boolean;
+}): ModelOverrideSummary {
+  const labels: string[] = [];
+  const trackedAssumptions: Array<{
+    label: string;
+    current: AssumptionValue<number>;
+    original: AssumptionValue<number>;
+  }> = [
+    { label: "vacancy", current: assumptions.vacancyRate, original: originalAssumptions.vacancyRate },
+    { label: "current market rent", current: assumptions.currentMarketRent, original: originalAssumptions.currentMarketRent },
+    { label: "rent growth", current: assumptions.rentGrowthRateAnnual, original: originalAssumptions.rentGrowthRateAnnual },
+    { label: "appreciation", current: assumptions.appreciationRateAnnual, original: originalAssumptions.appreciationRateAnnual },
+    { label: "capex", current: assumptions.renoCostPerSqFt, original: originalAssumptions.renoCostPerSqFt },
+    { label: "closing costs", current: assumptions.closingCostPct, original: originalAssumptions.closingCostPct },
+    { label: "mortgage rate", current: assumptions.mortgageRate, original: originalAssumptions.mortgageRate },
+    { label: "amortization", current: assumptions.amortizationYears, original: originalAssumptions.amortizationYears },
+    { label: "leverage", current: assumptions.ltvPct, original: originalAssumptions.ltvPct },
+    { label: "takeout leverage", current: assumptions.takeoutLtvPct, original: originalAssumptions.takeoutLtvPct },
+    { label: "bridge advance", current: assumptions.bridgeAdvancePct, original: originalAssumptions.bridgeAdvancePct },
+    { label: "bridge rate", current: assumptions.bridgeRateAnnual, original: originalAssumptions.bridgeRateAnnual },
+    { label: "bridge term", current: assumptions.bridgeTermMonths, original: originalAssumptions.bridgeTermMonths },
+    { label: "bridge fee", current: assumptions.bridgeFeePct, original: originalAssumptions.bridgeFeePct },
+    { label: "interest reserve", current: assumptions.bridgeInterestReserveMonths, original: originalAssumptions.bridgeInterestReserveMonths },
+    { label: "hold period", current: assumptions.holdPeriodYears, original: originalAssumptions.holdPeriodYears },
+  ];
+
+  for (const item of trackedAssumptions) {
+    if (assumptionChanged(item.current, item.original)) labels.push(item.label);
+  }
+
+  if (assumptionChanged(modeledRentPerUnit, originalModeledRentPerUnit)) {
+    labels.push("turnover rent");
+  }
+
+  if (bridgeEnabled !== originalBridgeEnabled) {
+    labels.push("bridge toggle");
+  }
+
+  const hasUnitRentOverride = unitRentSchedule.some((unit, index) => {
+    const original = originalUnitRentSchedule[index];
+    if (!original) return true;
+    return (
+      assumptionChanged(unit.currentMarketRent, original.currentMarketRent) ||
+      assumptionChanged(unit.modeledRent, original.modeledRent)
+    );
+  });
+  if (hasUnitRentOverride) labels.push("unit rent schedule");
+
+  const hasExpenseOverride =
+    assumptions.operatingExpenses.length !== originalAssumptions.operatingExpenses.length ||
+    assumptions.operatingExpenses.some((item) => {
+      const original = originalAssumptions.operatingExpenses.find((originalItem) => originalItem.key === item.key);
+      return (
+        !original ||
+        item.isCustom ||
+        assumptionChanged(item.rate, original.rate) ||
+        assumptionChanged(item.amountAnnual, original.amountAnnual)
+      );
+    });
+  if (hasExpenseOverride) labels.push("operating expenses");
+
+  const uniqueLabels = Array.from(new Set(labels));
+  return {
+    count: uniqueLabels.length,
+    labels: uniqueLabels,
+  };
+}
+
+function assumptionChanged(
+  current: AssumptionValue<number>,
+  original: AssumptionValue<number>
+): boolean {
+  return current.source === "user_override" || Math.abs(current.value - original.value) > 0.000001;
+}
+
 function MetricCard(props: {
   label: string;
   value: string;
@@ -2556,6 +3580,11 @@ function toDisplayValue(value: number, format: "currency" | "percent" | "number"
   return roundTo(value, 2);
 }
 
+function formatNumberInputDraft(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  return String(value);
+}
+
 function formatStaticValue(value: number, format: "currency" | "percent" | "number" | "years" | "months"): string {
   if (format === "currency") return currency(value);
   if (format === "percent") return percent(value * 100);
@@ -2574,6 +3603,62 @@ function roundTo(value: number, decimals: number): number {
   return Math.round(value * factor) / factor;
 }
 
+function buildRentRollBasis(input: {
+  unitRentSchedule: StrategyUnitRentLineItem[];
+  modeledUnitCount: number;
+  modeledRentAverage: number;
+  grossScheduledRentAnnual: number;
+}): {
+  headline: string;
+  detail: string;
+  monthlyRentRoll: number;
+  grossScheduledRentAnnual: number;
+  unitLine: string | null;
+} {
+  const modeledUnitCount = Math.max(0, input.modeledUnitCount);
+  const monthlyRentRoll = Math.max(0, input.modeledRentAverage) * modeledUnitCount;
+  const roundedMonthlyRentRoll = roundTo(monthlyRentRoll, 2);
+  const roundedAnnualGross = roundTo(input.grossScheduledRentAnnual, 2);
+
+  if (input.unitRentSchedule.length === 0) {
+    return {
+      headline: `${modeledUnitCount} units x ${currency(input.modeledRentAverage)}/mo average underwriting rent`,
+      detail: "No unit-by-unit rent schedule is available, so the table uses the scalar underwriting rent input.",
+      monthlyRentRoll: roundedMonthlyRentRoll,
+      grossScheduledRentAnnual: roundedAnnualGross,
+      unitLine: null,
+    };
+  }
+
+  const unitValues = input.unitRentSchedule.map((unit) => ({
+    label: unit.unitLabel,
+    rent: Math.max(0, unit.modeledRent.value),
+  }));
+  const scheduleMonthlyTotal = unitValues.reduce((sum, unit) => sum + unit.rent, 0);
+  const scheduleMatchesModeledUnits = input.unitRentSchedule.length === modeledUnitCount;
+  const unitLine = unitValues
+    .map((unit) => `${unit.label}: ${currency(unit.rent)}`)
+    .join(" + ");
+
+  if (scheduleMatchesModeledUnits) {
+    return {
+      headline: `${input.unitRentSchedule.length} unit rents sum to ${currency(scheduleMonthlyTotal)}/mo`,
+      detail: "The hold table starts from the unit-by-unit underwriting rents, then applies vacancy, expenses, debt service, and annual rent growth.",
+      monthlyRentRoll: roundTo(scheduleMonthlyTotal, 2),
+      grossScheduledRentAnnual: roundedAnnualGross,
+      unitLine: `${unitLine} = ${currency(scheduleMonthlyTotal)}/mo`,
+    };
+  }
+
+  return {
+    headline: `${currency(input.modeledRentAverage)}/mo average underwriting rent applied to ${modeledUnitCount} modeled units`,
+    detail: `The unit schedule has ${input.unitRentSchedule.length} rent lines, while this path models ${modeledUnitCount} units. The table uses the average unit rent until the unit schedule matches the modeled count.`,
+    monthlyRentRoll: roundedMonthlyRentRoll,
+    grossScheduledRentAnnual: roundedAnnualGross,
+    unitLine: `${unitLine}; average ${currency(input.modeledRentAverage)}/mo`,
+  };
+}
+
 function averageUnitRent(
   unitRents: StrategyUnitRentLineItem[],
   rentKey: "currentMarketRent" | "modeledRent"
@@ -2583,6 +3668,15 @@ function averageUnitRent(
     unitRents.reduce((sum, unit) => sum + unit[rentKey].value, 0) / unitRents.length,
     2
   );
+}
+
+function projectionUnitMonthlyRents(
+  unitRents: StrategyUnitRentLineItem[],
+  modeledUnits: number
+): number[] | undefined {
+  const modeledUnitCount = Math.max(0, Math.round(modeledUnits));
+  if (modeledUnitCount <= 0 || unitRents.length !== modeledUnitCount) return undefined;
+  return unitRents.map((unit) => Math.max(0, unit.modeledRent.value));
 }
 
 function cashflowPhaseLabel(year: CashflowProjectionYear): string {
@@ -2606,12 +3700,16 @@ function projectionHighlights(
 
 function modeledRentDescription(model: StrategyModel): string {
   if (model.modeledRentBasis === "current" || model.modeledRentBasis === "affordable") {
-    return "Monthly underwriting rent used for projections. Market rent on turnover uses the direct vacant-unit benchmark first, then falls back to an inferred turnover premium or a conservative market-rent floor when vacant-unit data is suppressed.";
+    return "Monthly underwriting rent used for projections. Current-income strategies start from the current unit-rent schedule, so individual unit edits flow into gross rent, NOI, and the hold-period table.";
   }
   if (model.modeledRentBasis === "renovated" || model.modeledRentBasis === "new_build") {
     return "Monthly underwriting rent used for projections. Market rent on turnover uses the same newer-stock or renovated proxy hierarchy for this listing.";
   }
   return "Monthly underwriting rent used for projections.";
+}
+
+function usesCurrentRentForProjection(model: StrategyModel): boolean {
+  return model.modeledRentBasis === "current" || model.modeledRentBasis === "affordable" || model.modeledRentBasis === "interim";
 }
 
 function modeledRentSourceDetail(

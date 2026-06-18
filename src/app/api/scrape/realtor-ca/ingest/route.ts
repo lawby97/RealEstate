@@ -1,9 +1,24 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { evaluateListing } from "@/lib/evaluation";
-import { mapRealtorCaListing, type RealtorCaListing } from "@/lib/realtor-ca-api";
+import type { RealtorCaListing } from "@/lib/realtor-ca-api";
+import {
+  MONTREAL_ISLAND_5PLEX_FILTER,
+  MONTREAL_ISLAND_5PLEX_SYNC_SCOPE,
+  syncRealtorCaSnapshot,
+} from "@/lib/listing-sync";
 
 const MAX_LISTINGS_PER_REQUEST = 1000;
+
+function optionalNumber(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function optionalDate(value: unknown): Date | undefined {
+  if (typeof value !== "string") return undefined;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : undefined;
+}
 
 /**
  * POST /api/scrape/realtor-ca/ingest
@@ -15,6 +30,7 @@ const MAX_LISTINGS_PER_REQUEST = 1000;
  */
 export async function POST(req: NextRequest) {
   try {
+    const searchParams = req.nextUrl.searchParams;
     const body = await req.json().catch(() => ({}));
     const rawList =
       Array.isArray(body.listings) ? body.listings
@@ -23,6 +39,27 @@ export async function POST(req: NextRequest) {
       : Array.isArray(body.data) ? body.data
       : [];
     const rawListings = rawList.slice(0, MAX_LISTINGS_PER_REQUEST) as RealtorCaListing[];
+    const syncScope = String(
+      body.syncScope ??
+      searchParams.get("syncScope") ??
+      "realtor_ca_manual"
+    );
+    const useMontrealFiveplexDefaults =
+      syncScope === MONTREAL_ISLAND_5PLEX_SYNC_SCOPE ||
+      body.captureScope === MONTREAL_ISLAND_5PLEX_SYNC_SCOPE ||
+      searchParams.get("captureScope") === MONTREAL_ISLAND_5PLEX_SYNC_SCOPE;
+    const filters = useMontrealFiveplexDefaults
+      ? MONTREAL_ISLAND_5PLEX_FILTER
+      : {
+          minPrice: optionalNumber(body.minPrice ?? searchParams.get("minPrice")),
+          maxPrice: optionalNumber(body.maxPrice ?? searchParams.get("maxPrice")),
+          units: optionalNumber(body.units ?? searchParams.get("units")),
+          cityNames: Array.isArray(body.cityNames) ? body.cityNames.map(String) : undefined,
+        };
+    const markMissingAsSold =
+      body.markMissingAsSold === true ||
+      searchParams.get("markMissingAsSold") === "1" ||
+      searchParams.get("markMissingAsSold") === "true";
 
     if (rawListings.length === 0) {
       return Response.json(
@@ -35,91 +72,20 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    let created = 0;
-    let updated = 0;
-
-    for (const raw of rawListings) {
-      try {
-        const mapped = mapRealtorCaListing(raw);
-        const listing = await prisma.listing.upsert({
-          where: { externalId: mapped.externalId },
-          create: {
-            ...mapped,
-            isLinkActive: null,
-            linkCheckedAt: null,
-            linkStatusCode: null,
-            linkStatusNote: null,
-          },
-          update: {
-            price: mapped.price,
-            address: mapped.address,
-            city: mapped.city,
-            province: mapped.province,
-            propertyType: mapped.propertyType,
-            units: mapped.units,
-            postalCode: mapped.postalCode,
-            latitude: mapped.latitude,
-            longitude: mapped.longitude,
-            bedrooms: mapped.bedrooms,
-            bathrooms: mapped.bathrooms,
-            squareFeet: mapped.squareFeet,
-            lotSizeSqFt: mapped.lotSizeSqFt,
-            yearBuilt: mapped.yearBuilt,
-            description: mapped.description,
-            photoUrls: mapped.photoUrls,
-            listingUrl: mapped.listingUrl,
-            lastSeenAt: new Date(),
-            isLinkActive: null,
-            linkCheckedAt: null,
-            linkStatusCode: null,
-            linkStatusNote: null,
-            rawJson: mapped.rawJson,
-          },
-        });
-        if (listing.createdAt.getTime() === listing.updatedAt.getTime()) created++;
-        else updated++;
-
-        const result = evaluateListing({
-          price: listing.price,
-          city: listing.city,
-          province: listing.province,
-          postalCode: listing.postalCode,
-          units: listing.units,
-          bedrooms: listing.bedrooms,
-        });
-
-        await prisma.listingEvaluation.upsert({
-          where: { listingId: listing.id },
-          create: {
-            listingId: listing.id,
-            cashflowScore: result.cashflowScore,
-            equityGrowthScore: result.equityGrowthScore,
-            combinedScore: result.combinedScore,
-            cashflowNotes: result.cashflowNotes,
-            equityNotes: result.equityNotes,
-          },
-          update: {
-            cashflowScore: result.cashflowScore,
-            equityGrowthScore: result.equityGrowthScore,
-            combinedScore: result.combinedScore,
-            cashflowNotes: result.cashflowNotes,
-            equityNotes: result.equityNotes,
-            computedAt: new Date(),
-          },
-        });
-      } catch (e) {
-        console.warn("Skip listing:", raw?.Id ?? raw, e);
-      }
-    }
+    const result = await syncRealtorCaSnapshot(rawListings, {
+      syncScope,
+      minPrice: filters.minPrice,
+      maxPrice: filters.maxPrice,
+      units: filters.units,
+      cityNames: filters.cityNames,
+      markMissingAsSold,
+      runAt: optionalDate(body.capturedAt ?? searchParams.get("capturedAt")),
+    });
 
     return Response.json({
       ok: true,
-      source: "realtor_ca",
-      received: rawListings.length,
-      created,
-      updated,
-      evaluated: created + updated,
-      message: `Ingested ${rawListings.length} Realtor.ca listings (${created} new, ${updated} updated).`,
+      ...result,
+      message: `Ingested ${result.accepted} scoped Realtor.ca listings (${result.created} new, ${result.updated} updated, ${result.soldMarked} marked sold).`,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Ingest failed";

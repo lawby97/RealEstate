@@ -38,6 +38,10 @@ interface PropertyTaxEstimateInput {
   purchasePrice: number;
   residentialShareEstimated?: number | null;
   exactAnnualTax?: number | null;
+  exactAnnualTaxYear?: number | null;
+  exactAnnualTaxSourceLabel?: string | null;
+  exactAnnualTaxSourceSummary?: string | null;
+  exactAnnualTaxFormulaSummary?: string | null;
   assessedValue?: number | null;
 }
 
@@ -76,7 +80,7 @@ const PROPERTY_TAX_RATE_TABLE: PropertyTaxRateEntry[] = [
       non_residential: 0.0093497,
       vacant_land: 0.0093497,
     },
-    notes: "Rates published per $1,000 of taxable assessed value.",
+    notes: "Rates published per $1,000 of taxable value.",
   },
   {
     city: "Victoria",
@@ -88,7 +92,7 @@ const PROPERTY_TAX_RATE_TABLE: PropertyTaxRateEntry[] = [
       non_residential: 0.0086028,
       vacant_land: 0.0086028,
     },
-    notes: "Residential Class 1 rate published per $1,000 of taxable assessed value.",
+    notes: "Residential Class 1 rate published per $1,000 of taxable value.",
   },
   {
     city: "Winnipeg",
@@ -560,13 +564,13 @@ function buildEstimate(params: {
 export function propertyTaxMethodLabel(method: PropertyTaxMethod): string {
   switch (method) {
     case "exact_bill":
-      return "Exact bill";
+      return "Source annual tax";
     case "assessed_value_x_official_rate":
-      return "Official assessed-value estimate";
+      return "Official tax-rate estimate";
     case "jurisdiction_proxy_x_official_rate":
-      return "Official rate + local assessment proxy";
+      return "Official rate + local tax-base proxy";
     case "province_proxy_x_official_rate":
-      return "Official rate + provincial proxy";
+      return "Official rate + provincial tax-base proxy";
     case "effective_tax_backup":
       return "Backup estimate";
     case "user_override":
@@ -613,15 +617,15 @@ export function resolvePropertyTaxEstimate(input: PropertyTaxEstimateInput): Pro
       confidence: "high",
       source: "actual",
       province: input.province,
-      taxYear: null,
+      taxYear: input.exactAnnualTaxYear ?? null,
       jurisdiction: directCity ?? marketCity,
       areaLabel,
       assessedValueSource: input.assessedValue != null ? "exact" : "not_available",
       assessmentProxyRatio: null,
       appliedRate: null,
-      sourceLabel: "Exact annual property tax bill",
-      sourceSummary: "Exact annual property tax bill or source-provided annual tax amount.",
-      formulaSummary: `Annual property tax = ${formatCurrency(input.exactAnnualTax)} exact bill amount`,
+      sourceLabel: input.exactAnnualTaxSourceLabel ?? "Exact annual property tax bill",
+      sourceSummary: input.exactAnnualTaxSourceSummary ?? "Exact annual property tax bill or source-provided annual tax amount.",
+      formulaSummary: input.exactAnnualTaxFormulaSummary ?? `Annual property tax = ${formatCurrency(input.exactAnnualTax)} exact bill amount`,
     });
   }
 
@@ -652,7 +656,7 @@ export function resolvePropertyTaxEstimate(input: PropertyTaxEstimateInput): Pro
       sourceLabel: rateEntry.sourceLabel,
       sourceUrl: rateEntry.sourceUrl,
       sourceSummary: `${rateEntry.sourceLabel}${rateMatch?.cityMatchType === "market" ? ` using ${rateEntry.city} market-city fallback.` : "."}${rateEntry.notes ? ` ${rateEntry.notes}` : ""}`,
-      formulaSummary: `${formatCurrency(input.assessedValue)} assessed value × ${formatPercent(resolvedRate.rate)} official ${propertyTaxClassLabel(appliedTaxClass).toLowerCase()} rate = ${formatCurrency(amountAnnual)} per year`,
+      formulaSummary: `${formatCurrency(input.assessedValue)} tax value × ${formatPercent(resolvedRate.rate)} official ${propertyTaxClassLabel(appliedTaxClass).toLowerCase()} rate = ${formatCurrency(amountAnnual)} per year`,
       fallbackReason: rateMatch?.cityMatchType === "market"
         ? `Direct municipal rate was unavailable; used ${rateEntry.city} market-city fallback rate.`
         : null,
@@ -681,9 +685,9 @@ export function resolvePropertyTaxEstimate(input: PropertyTaxEstimateInput): Pro
         appliedRate: resolvedRate.rate,
         sourceLabel: rateEntry.sourceLabel,
         sourceUrl: rateEntry.sourceUrl,
-        sourceSummary: `${rateEntry.sourceLabel}. Assessed value is estimated from an internal ${rateEntry.city} ${propertyTaxClassLabel(appliedTaxClass).toLowerCase()} assessment proxy ratio of ${formatPercent(localProxyRatio)}.${rateEntry.notes ? ` ${rateEntry.notes}` : ""}`,
-        formulaSummary: `${formatCurrency(input.purchasePrice)} purchase price × ${formatPercent(localProxyRatio)} local assessment proxy = ${formatCurrency(assessedValue)} assessed value proxy; ${formatCurrency(assessedValue)} × ${formatPercent(resolvedRate.rate)} official rate = ${formatCurrency(amountAnnual)} per year`,
-        fallbackReason: "Exact assessed value was not available, so the estimate uses a jurisdiction-level assessment proxy ratio.",
+        sourceSummary: `${rateEntry.sourceLabel}. Taxable value is estimated from an internal ${rateEntry.city} ${propertyTaxClassLabel(appliedTaxClass).toLowerCase()} tax-base proxy ratio of ${formatPercent(localProxyRatio)}.${rateEntry.notes ? ` ${rateEntry.notes}` : ""}`,
+        formulaSummary: `${formatCurrency(input.purchasePrice)} purchase price × ${formatPercent(localProxyRatio)} local tax-base proxy = ${formatCurrency(assessedValue)} tax-base estimate; ${formatCurrency(assessedValue)} × ${formatPercent(resolvedRate.rate)} official rate = ${formatCurrency(amountAnnual)} per year`,
+        fallbackReason: "Source annual tax dollars were not available, so the estimate uses a jurisdiction-level tax-base proxy ratio.",
       });
     }
 
@@ -708,9 +712,9 @@ export function resolvePropertyTaxEstimate(input: PropertyTaxEstimateInput): Pro
         appliedRate: resolvedRate.rate,
         sourceLabel: rateEntry.sourceLabel,
         sourceUrl: rateEntry.sourceUrl,
-        sourceSummary: `${rateEntry.sourceLabel}. Assessed value is estimated from an internal ${input.province} ${propertyTaxClassLabel(appliedTaxClass).toLowerCase()} provincial assessment proxy ratio of ${formatPercent(provincialProxyRatio)}.${rateEntry.notes ? ` ${rateEntry.notes}` : ""}`,
-        formulaSummary: `${formatCurrency(input.purchasePrice)} purchase price × ${formatPercent(provincialProxyRatio)} provincial assessment proxy = ${formatCurrency(assessedValue)} assessed value proxy; ${formatCurrency(assessedValue)} × ${formatPercent(resolvedRate.rate)} official rate = ${formatCurrency(amountAnnual)} per year`,
-        fallbackReason: "Exact assessed value and jurisdiction-level proxy were unavailable, so the estimate uses a province-level assessment proxy ratio.",
+        sourceSummary: `${rateEntry.sourceLabel}. Taxable value is estimated from an internal ${input.province} ${propertyTaxClassLabel(appliedTaxClass).toLowerCase()} provincial tax-base proxy ratio of ${formatPercent(provincialProxyRatio)}.${rateEntry.notes ? ` ${rateEntry.notes}` : ""}`,
+        formulaSummary: `${formatCurrency(input.purchasePrice)} purchase price × ${formatPercent(provincialProxyRatio)} provincial tax-base proxy = ${formatCurrency(assessedValue)} tax-base estimate; ${formatCurrency(assessedValue)} × ${formatPercent(resolvedRate.rate)} official rate = ${formatCurrency(amountAnnual)} per year`,
+        fallbackReason: "Source annual tax dollars and jurisdiction-level proxy were unavailable, so the estimate uses a province-level tax-base proxy ratio.",
       });
     }
   }
@@ -735,11 +739,11 @@ export function resolvePropertyTaxEstimate(input: PropertyTaxEstimateInput): Pro
       appliedRate: backupRate.rate,
       sourceLabel: backupRate.sourceLabel,
       sourceUrl: backupRate.sourceUrl,
-      sourceSummary: `${backupRate.sourceLabel}. This is a low-confidence backup burden estimate because the assessment-based path could not be fully resolved.${backupRate.notes ? ` ${backupRate.notes}` : ""}`,
+      sourceSummary: `${backupRate.sourceLabel}. This is a low-confidence backup burden estimate because source annual tax dollars or a tax-base proxy could not be fully resolved.${backupRate.notes ? ` ${backupRate.notes}` : ""}`,
       formulaSummary: `${formatCurrency(input.purchasePrice)} purchase price × ${formatPercent(backupRate.rate)} backup effective tax burden = ${formatCurrency(amountAnnual)} per year`,
       fallbackReason: rateEntry == null
         ? "No official municipal rate row was available for the current municipality or market-city fallback."
-        : "The official-rate path could not be paired with an assessed value or assessment proxy.",
+        : "The official-rate path could not be paired with source annual tax dollars or a tax-base proxy.",
     });
   }
 

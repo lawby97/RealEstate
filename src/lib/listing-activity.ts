@@ -37,7 +37,7 @@ function staleCutoff(): Date {
 }
 
 export function buildActiveListingWhere(baseWhere: Prisma.ListingWhereInput = {}): Prisma.ListingWhereInput {
-  return andWhere(baseWhere, { isLinkActive: true });
+  return andWhere(baseWhere, { isLinkActive: true, listingStatus: { not: "sold" } });
 }
 
 function needsRefresh(candidate: ListingActivityCandidate, cutoff: Date): boolean {
@@ -82,6 +82,8 @@ async function probeListingUrl(listingUrl: string, source: string): Promise<Link
     if ((status >= 200 && status < 500) || status === 405) {
       const hostLabel = source.toLowerCase().includes("centris")
         ? "Centris"
+        : source.toLowerCase().includes("multi")
+          ? "merged source"
         : source.toLowerCase().includes("realtor")
           ? "Realtor.ca"
           : "source";
@@ -114,19 +116,32 @@ async function refreshCandidate(candidate: ListingActivityCandidate): Promise<vo
     await prisma.listing.update({
       where: { id: candidate.id },
       data: {
+        listingStatus: "sold",
+        soldAt: checkedAt,
+        unavailableSince: checkedAt,
         isLinkActive: false,
         linkCheckedAt: checkedAt,
         linkStatusCode: null,
-        linkStatusNote: "Listing URL missing; cannot verify active source page.",
+        linkStatusNote: "Listing URL missing; marked sold/unavailable during cleanup.",
       },
     });
     return;
   }
 
   const probe = await probeListingUrl(candidate.listingUrl, candidate.source);
+  const inactiveData =
+    probe.isActive === false
+      ? {
+          listingStatus: "sold",
+          soldAt: checkedAt,
+          unavailableSince: checkedAt,
+        }
+      : {};
+
   await prisma.listing.update({
     where: { id: candidate.id },
     data: {
+      ...inactiveData,
       isLinkActive: probe.isActive ?? candidate.isLinkActive ?? null,
       linkCheckedAt: checkedAt,
       linkStatusCode: probe.statusCode,
@@ -165,17 +180,25 @@ async function mapWithConcurrency<T>(
   await Promise.all(runners);
 }
 
-export async function refreshListingActivityCache(baseWhere: Prisma.ListingWhereInput = {}): Promise<void> {
+export async function refreshListingActivityCache(
+  baseWhere: Prisma.ListingWhereInput = {},
+  options?: { force?: boolean }
+): Promise<void> {
   const cutoff = staleCutoff();
   const candidates = await prisma.listing.findMany({
-    where: andWhere(baseWhere, {
-      OR: [
-        { linkCheckedAt: null },
-        { linkCheckedAt: { lt: cutoff } },
-        { isLinkActive: null },
-        { linkStatusNote: { contains: "Dynamic server usage" } },
-      ],
-    }),
+    where: andWhere(
+      baseWhere,
+      options?.force
+        ? {}
+        : {
+            OR: [
+              { linkCheckedAt: null },
+              { linkCheckedAt: { lt: cutoff } },
+              { isLinkActive: null },
+              { linkStatusNote: { contains: "Dynamic server usage" } },
+            ],
+          }
+    ),
     select: {
       id: true,
       listingUrl: true,
@@ -187,8 +210,42 @@ export async function refreshListingActivityCache(baseWhere: Prisma.ListingWhere
     orderBy: { lastSeenAt: "desc" },
   });
 
-  const staleCandidates = candidates.filter((candidate) => needsRefresh(candidate, cutoff));
+  const staleCandidates = options?.force
+    ? candidates
+    : candidates.filter((candidate) => needsRefresh(candidate, cutoff));
   if (staleCandidates.length === 0) return;
 
   await mapWithConcurrency(staleCandidates, 8, refreshWithDedupe);
+}
+
+export async function markPlaceholderListingsUnavailable(): Promise<number> {
+  const placeholders = await prisma.listing.findMany({
+    where: {
+      listingStatus: { not: "sold" },
+      OR: [
+        { externalId: { startsWith: "mock-" } },
+        { listingUrl: { contains: "/example/" } },
+        { listingUrl: { contains: "example.com" } },
+      ],
+    },
+    select: { id: true, listingUrl: true },
+  });
+
+  if (placeholders.length === 0) return 0;
+
+  const checkedAt = new Date();
+  await prisma.listing.updateMany({
+    where: { id: { in: placeholders.map((candidate) => candidate.id) } },
+    data: {
+      listingStatus: "sold",
+      soldAt: checkedAt,
+      unavailableSince: checkedAt,
+      isLinkActive: false,
+      linkCheckedAt: checkedAt,
+      linkStatusCode: null,
+      linkStatusNote: "Placeholder/example listing retired during cleanup.",
+    },
+  });
+
+  return placeholders.length;
 }

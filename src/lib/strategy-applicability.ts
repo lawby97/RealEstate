@@ -94,6 +94,7 @@ export const SCENARIO_ORDER: StrategyId[] = [
   "bridge_conventional_small_bay_refi",
   "bridge_cmhc_income_property_takeout",
   "owner_occupied_improvement_refi",
+  "personal_plex_lender_exception",
   "conventional_multifamily_hold",
   "cmhc_standard_rental_existing",
   "mli_select_existing",
@@ -187,6 +188,14 @@ export const STRATEGY_META: Record<StrategyId, StrategyMeta> = {
     shortDescription: "Live-in improvement path with a post-work refinance mindset.",
     fitSummary: "Fits owner-occupants improving a 1-4 unit property while staying in the deal.",
     programId: "cmhc_improvement_owner_occupied",
+  },
+  personal_plex_lender_exception: {
+    id: "personal_plex_lender_exception",
+    businessPlanId: "multifamily_hold",
+    name: "RBC/Desjardins personal plex exception",
+    shortDescription: "Personal-borrower exception screen for 5-8 unit plex acquisitions.",
+    fitSummary: "Fits 5-8 unit plex files only when a lender confirms personal mortgage treatment in writing.",
+    programId: "personal_plex_lender_exception",
   },
   conventional_multifamily_hold: {
     id: "conventional_multifamily_hold",
@@ -315,6 +324,14 @@ function isFivePlusResidential(profile: NormalizedProfileResult): boolean {
   return profile.normalizedUnits >= 5 && profile.residentialUseCategory !== "non_residential";
 }
 
+function isFiveToEightResidential(profile: NormalizedProfileResult): boolean {
+  return (
+    profile.normalizedUnits >= 5 &&
+    profile.normalizedUnits <= 8 &&
+    profile.residentialUseCategory !== "non_residential"
+  );
+}
+
 function isOwnerOccupiedEligibleSmallAsset(profile: NormalizedProfileResult): boolean {
   return (
     profile.normalizedUnits >= 1 &&
@@ -398,6 +415,7 @@ export function getScenarioApplicability(
   const sharePct = residentialSharePct(profile, investorContext);
   const smallResidential = isOneToFourUnitResidential(profile);
   const fivePlusResidential = isFivePlusResidential(profile);
+  const fiveToEightResidential = isFiveToEightResidential(profile);
   const ownerOccupiedAsset = isOwnerOccupiedEligibleSmallAsset(profile);
   const developmentCandidate = isDevelopmentCandidate(profile, investorContext);
   const multifamilyShare = multifamilyResidentialShareStatus(sharePct);
@@ -570,6 +588,26 @@ export function getScenarioApplicability(
   );
 
   results.push(
+    buildScenarioResult(
+      "personal_plex_lender_exception",
+      fiveToEightResidential && existingDeal
+        ? profile.residentialUseCategory === "mixed_use"
+          ? multifamilyShare.status
+          : "applicable"
+        : "not_applicable",
+      fiveToEightResidential && existingDeal
+        ? profile.residentialUseCategory === "mixed_use"
+          ? multifamilyShare.reason
+          : "5-8 unit residential plex can be screened as a personal lender exception when RBC, Desjardins, or another lender confirms the file in writing."
+        : "This exception path is only for existing 5-8 unit residential plex assets.",
+      profile,
+      models,
+      fiveToEightResidential && existingDeal && profile.residentialUseCategory === "mixed_use" && sharePct == null
+        ? ["residential share", "written personal-lender exception"]
+        : fiveToEightResidential && existingDeal
+          ? ["written personal-lender exception"]
+          : []
+    ),
     buildScenarioResult(
       "conventional_multifamily_hold",
       fivePlusResidential && existingDeal

@@ -12,3 +12,2124 @@ body {
   color: var(--foreground);
   font-family: "Avenir Next", Avenir, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 }
+
+.dashboard-shell {
+  display: flex;
+  min-height: 100vh;
+  background-color: #f8fafc;
+}
+
+.dashboard-sidebar {
+  width: 260px;
+  min-width: 260px;
+  border-right: 1px solid #e2e8f0;
+}
+
+.dashboard-main {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+}
+
+.dashboard-main:has(.listing-detail-page) {
+  overflow: visible;
+}
+
+.dashboard-page {
+  box-sizing: border-box;
+  width: 100%;
+}
+
+.dashboard-page *,
+.dashboard-page *::before,
+.dashboard-page *::after {
+  box-sizing: border-box;
+}
+
+.dashboard-page img,
+.dashboard-page video {
+  max-width: 100%;
+}
+
+.listing-card-formula-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.listing-detail-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.strategy-selector-compare-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.listing-context-editor-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.strategy-selector-compare-disclosure:not([open]) .strategy-selector-compare-open,
+.strategy-selector-compare-disclosure[open] .strategy-selector-compare-closed,
+.listing-context-editor-disclosure:not([open]) .listing-context-editor-open,
+.listing-context-editor-disclosure[open] .listing-context-editor-closed {
+  display: none;
+}
+
+.strategy-selector-compare-disclosure:not([open]) .strategy-selector-compare-body,
+.listing-context-editor-disclosure:not([open]) .listing-context-editor-body {
+  display: none !important;
+}
+
+.listing-detail-disclosure[open] summary {
+  border-bottom: 1px solid #dbeafe;
+}
+
+.listing-detail-disclosure:not([open]) .investor-operating-bridge,
+.listing-detail-disclosure:not([open]) .investor-math-audit,
+.listing-detail-disclosure:not([open]) .investor-first-glance-formulas {
+  display: none !important;
+}
+
+.playbook-outcome-detail-disclosure[data-open="true"] .playbook-outcome-detail-summary {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.sold-roi-formula-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.sold-roi-formula-disclosure[open] summary {
+  padding-bottom: 2px;
+}
+
+.underwriting-formula-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.underwriting-formula-disclosure[open] summary {
+  border-bottom: 1px solid #dbeafe;
+}
+
+.calculator-bridge-formula-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.calculator-bridge-formula-disclosure[open] summary {
+  border-bottom: 1px solid #dbeafe;
+  padding-bottom: 10px;
+}
+
+.calculator-bridge-formula-disclosure:not([open]) .calculator-bridge-formula-grid {
+  display: none !important;
+}
+
+.properties-review-path-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.properties-review-path-disclosure[open] summary {
+  border-bottom: 1px solid #e2e8f0;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+}
+
+.properties-review-path-disclosure:not([open]) .properties-review-path-grid {
+  display: none !important;
+}
+
+.montreal-source-preview-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.montreal-source-preview-disclosure[open] summary {
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 14px;
+}
+
+.montreal-source-preview-disclosure:not([open]) .montreal-source-preview-body {
+  display: none !important;
+}
+
+.profile-assumption-disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.profile-assumption-disclosure[open] summary {
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.dashboard-page input,
+.dashboard-page select,
+.dashboard-page textarea,
+.dashboard-page button {
+  font: inherit;
+  max-width: 100%;
+}
+
+.dashboard-page p,
+.dashboard-page h1,
+.dashboard-page h2,
+.dashboard-page h3,
+.dashboard-page strong,
+.dashboard-page span,
+.dashboard-page a {
+  overflow-wrap: anywhere;
+}
+
+.dashboard-hero {
+  min-width: 0;
+}
+
+.dashboard-card-grid,
+.dashboard-two-column {
+  min-width: 0;
+}
+
+.sidebar-nav {
+  scrollbar-width: thin;
+}
+
+.sidebar-nav-link {
+  white-space: normal;
+}
+
+.sidebar-nav-copy {
+  min-width: 0;
+}
+
+.sidebar-nav-section:first-child .sidebar-nav-group-label {
+  margin-top: 0 !important;
+}
+
+.sidebar-current-page {
+  display: none;
+}
+
+.dashboard-mobile-action-bar {
+  display: none;
+}
+
+.dashboard-listings-anchor {
+  scroll-margin-top: 18px;
+}
+
+.listing-detail-section-anchor {
+  scroll-margin-top: 132px;
+}
+
+@media (max-width: 920px) {
+  .dashboard-shell {
+    flex-direction: column;
+  }
+
+  .dashboard-sidebar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    width: 100%;
+    min-width: 0;
+    border-right: 0;
+    border-bottom: 1px solid #e2e8f0;
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.06);
+  }
+
+  .dashboard-main {
+    overflow: visible;
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  .sidebar-brand {
+    padding: 12px 14px !important;
+  }
+
+  .sidebar-content {
+    padding: 10px 12px 12px !important;
+  }
+
+  .sidebar-account-link {
+    margin-bottom: 10px !important;
+  }
+
+  .sidebar-current-page {
+    display: flex !important;
+  }
+
+  .sidebar-section-label,
+  .sidebar-nav-group-label,
+  .sidebar-brand-subtitle,
+  .sidebar-market-intelligence,
+  .sidebar-ai-panel,
+  .sidebar-next-guide {
+    display: none !important;
+  }
+
+  .sidebar-nav-section {
+    display: contents !important;
+  }
+
+  .sidebar-nav {
+    flex-direction: row !important;
+    gap: 8px !important;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .sidebar-nav-link {
+    flex: 0 0 auto;
+    border: 1px solid #e2e8f0;
+    background-color: #fff;
+    white-space: nowrap;
+  }
+
+  .sidebar-nav-link-active {
+    border-color: #93c5fd !important;
+    box-shadow: inset 0 -3px 0 #2563eb, 0 8px 18px rgba(37, 99, 235, 0.10);
+  }
+
+  .sidebar-nav-description {
+    display: none !important;
+  }
+
+  .sidebar-current-page-action {
+    min-height: 0 !important;
+  }
+
+  .dashboard-two-column {
+    grid-template-columns: 1fr !important;
+  }
+
+  .sold-audit-row {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 560px) {
+  .dashboard-sidebar {
+    position: sticky;
+  }
+
+  .sidebar-brand {
+    min-height: 52px !important;
+    padding: 9px 96px 9px 12px !important;
+  }
+
+  .sidebar-brand > div:first-child {
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 14px !important;
+    flex: 0 0 32px !important;
+  }
+
+  .sidebar-brand > div:last-child > div:first-child {
+    font-size: 14px !important;
+    line-height: 1.15 !important;
+  }
+
+  .sidebar-content {
+    padding: 6px 8px 8px !important;
+  }
+
+  .sidebar-account-link {
+    position: absolute !important;
+    top: 10px;
+    right: 10px;
+    z-index: 2;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 7px 10px !important;
+    border-radius: 999px !important;
+    box-shadow: 0 10px 20px rgba(22, 163, 74, 0.18);
+  }
+
+  .sidebar-current-page {
+    display: none !important;
+  }
+
+  .sidebar-nav {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+    overflow-x: visible !important;
+    padding-bottom: 0 !important;
+  }
+
+  .sidebar-nav-copy {
+    display: block !important;
+    min-width: 0 !important;
+    text-align: center !important;
+  }
+
+  .sidebar-nav-link {
+    flex: none !important;
+    min-width: 0 !important;
+    width: 100% !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    padding: 8px 5px !important;
+    text-align: center !important;
+    white-space: normal !important;
+  }
+
+  .sidebar-nav-copy > span:first-child {
+    display: block !important;
+    font-size: 11px !important;
+    line-height: 1.12 !important;
+  }
+
+  .sidebar-nav-link svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .auth-page {
+    align-items: flex-start !important;
+    padding: 14px !important;
+  }
+
+  .auth-shell {
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  .auth-card {
+    order: 1 !important;
+    width: 100% !important;
+    max-width: none !important;
+    padding: 18px !important;
+    border-radius: 14px !important;
+  }
+
+  .auth-workflow-panel {
+    order: 2 !important;
+    width: 100% !important;
+    padding: 16px !important;
+    border-radius: 14px !important;
+  }
+
+  .auth-header-row {
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  .auth-cta-link {
+    align-self: flex-start !important;
+    min-height: 0 !important;
+    padding: 8px 12px !important;
+  }
+
+  .auth-highlight-list {
+    gap: 8px !important;
+    margin-top: 14px !important;
+  }
+
+  .auth-highlight-item {
+    padding: 10px !important;
+  }
+
+  .auth-next-steps {
+    padding: 10px !important;
+    margin: 14px 0 !important;
+  }
+
+  .auth-next-step-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .auth-next-step-card {
+    padding: 9px !important;
+  }
+
+  .auth-form-summary {
+    padding: 10px !important;
+    margin-bottom: 14px !important;
+  }
+
+  .auth-form-summary-grid,
+  .auth-name-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .auth-form {
+    gap: 13px !important;
+  }
+
+  .auth-submit-button {
+    min-height: 46px !important;
+  }
+
+  .dashboard-page .profile-gate-card {
+    border-radius: 14px !important;
+  }
+
+  .dashboard-page .profile-gate-grid {
+    grid-template-columns: 1fr !important;
+    min-height: 0 !important;
+  }
+
+  .dashboard-page .profile-gate-grid > div,
+  .dashboard-page .profile-gate-grid > aside {
+    padding: 18px !important;
+  }
+
+  .dashboard-page .profile-gate-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .profile-gate-actions > a,
+  .dashboard-page .profile-gate-actions > button,
+  .dashboard-page .profile-gate-actions > span {
+    width: 100% !important;
+    min-height: 42px !important;
+  }
+
+  .dashboard-page {
+    padding: 14px !important;
+    padding-bottom: 86px !important;
+  }
+
+  .dashboard-mobile-action-bar {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
+    z-index: 50;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.34);
+    border-radius: 999px;
+    background: rgba(15, 23, 42, 0.92);
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.24);
+    backdrop-filter: blur(12px);
+  }
+
+  .dashboard-mobile-action-bar button {
+    min-height: 38px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .dashboard-mobile-action-bar button:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .dashboard-page .dashboard-capital-presets {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .dashboard-filter-footer,
+  .dashboard-page .dashboard-filter-footer > div {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    justify-items: stretch !important;
+    width: 100% !important;
+  }
+
+  .dashboard-page .dashboard-filter-footer button {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .dashboard-page .dashboard-account-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+  }
+
+  .dashboard-page .dashboard-account-actions > a {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .dashboard-page .dashboard-capital-preset-button {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .dashboard-page .dashboard-capital-fit-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .dashboard-capital-fit-stat {
+    padding: 10px !important;
+  }
+
+  #dashboard-top-opportunity,
+  #dashboard-filters,
+  #dashboard-listings {
+    scroll-margin-top: 288px;
+  }
+
+  .listing-detail-section-anchor {
+    scroll-margin-top: 300px;
+  }
+
+  .listing-return-sticky-bar {
+    position: static !important;
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+    padding: 10px !important;
+  }
+
+  .listing-return-sticky-metrics {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+    overflow-x: visible !important;
+    padding-bottom: 2px;
+  }
+
+  .listing-return-sticky-metrics > div {
+    min-width: 0 !important;
+  }
+
+  .listing-detail-page .listing-decision-command-bar {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+    padding: 12px !important;
+  }
+
+  .listing-detail-page .listing-decision-command-primary {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+    padding: 11px !important;
+  }
+
+  .listing-detail-page .listing-decision-command-primary a {
+    width: 100% !important;
+  }
+
+  .listing-detail-page .listing-decision-command-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page .listing-decision-command-metric,
+  .listing-detail-page .listing-decision-command-side > * {
+    padding: 10px !important;
+  }
+
+  .listing-detail-page .listing-decision-command-guide {
+    padding: 10px !important;
+  }
+
+  .listing-detail-page .listing-decision-command-route-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page .listing-decision-command-route-grid a {
+    padding: 9px !important;
+  }
+
+  .listing-detail-page .listing-decision-command-route-detail {
+    display: none !important;
+  }
+
+  .listing-detail-page .listing-decision-command-check-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page .listing-decision-command-check-grid a {
+    grid-template-columns: 1fr !important;
+    gap: 5px !important;
+    padding: 10px !important;
+  }
+
+  .listing-detail-page .listing-decision-command-check-grid a > span:last-child {
+    justify-content: flex-start !important;
+  }
+
+  .listing-detail-page .listing-decision-command-metric-detail,
+  .listing-detail-page .listing-decision-command-side-detail {
+    display: none !important;
+  }
+
+  .listing-detail-page .listing-decision-command-side {
+    display: none !important;
+  }
+
+  .listing-detail-page .strategy-selector-compare-summary-copy {
+    display: none !important;
+  }
+
+  .listing-detail-page .listing-context-editor-summary-copy {
+    display: none !important;
+  }
+
+  .listing-detail-page {
+    width: calc(100vw - 28px) !important;
+    max-width: calc(100vw - 28px) !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    padding-top: 14px !important;
+    padding-bottom: 32px !important;
+  }
+
+  .listing-detail-page > *,
+  .listing-detail-page section,
+  .listing-detail-page header,
+  .listing-detail-page article,
+  .listing-detail-page [style*="display: grid"] {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .listing-detail-page [style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  .listing-detail-page .listing-decision-command-route-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .listing-detail-page .listing-decision-command-check-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] {
+    padding: 12px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-priority-scorecard {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-priority-scorecard-primary {
+    padding: 12px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-priority-scorecard-primary a {
+    width: 100% !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-priority-scorecard-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-priority-scorecard-metric {
+    padding: 10px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-priority-scorecard-support {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-priority-scorecard-support-card {
+    padding: 10px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-cashflow-timeline {
+    padding: 12px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-cashflow-timeline-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-cashflow-timeline-card {
+    padding: 10px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-operating-bridge {
+    padding: 12px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-operating-bridge-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-operating-bridge-card {
+    padding: 10px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-math-audit {
+    padding: 12px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-math-audit-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-math-audit-card {
+    padding: 10px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .listing-detail-disclosure-summary {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+    padding: 12px !important;
+  }
+
+  .listing-detail-page [data-testid="investor-first-glance"] .listing-detail-disclosure-summary > span:last-child {
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  .listing-detail-page .listing-freshness-strip {
+    padding: 12px !important;
+  }
+
+  .listing-detail-page .listing-freshness-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page .listing-freshness-card {
+    padding: 10px !important;
+  }
+
+  .listing-detail-page .listing-source-snapshot-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .listing-detail-page .listing-source-fact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page .listing-source-signal-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page .listing-source-signal-card {
+    padding: 10px !important;
+  }
+
+  .listing-detail-page .listing-source-fact-card {
+    padding: 10px !important;
+  }
+
+  .listing-detail-page .listing-market-signal-strip {
+    padding: 12px !important;
+  }
+
+  .listing-detail-page .listing-market-signal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page .listing-market-signal-card {
+    padding: 10px !important;
+  }
+
+  .listing-detail-page .listing-underwriting-handoff {
+    padding: 12px !important;
+  }
+
+  .listing-detail-page .listing-underwriting-handoff-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page .listing-underwriting-handoff-card {
+    padding: 10px !important;
+  }
+
+  .listing-detail-page .playbook-outcome-priority-grid,
+  .listing-detail-page .playbook-outcome-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page .playbook-outcome-detail-summary {
+    padding: 12px !important;
+  }
+
+  .listing-detail-page .playbook-outcome-detail-summary > span {
+    width: 100% !important;
+    text-align: center !important;
+  }
+
+  .listing-detail-page .listing-data-trust-panel {
+    padding: 12px !important;
+  }
+
+  .listing-detail-page .listing-data-trust-verdict {
+    padding: 12px !important;
+  }
+
+  .listing-detail-page .listing-data-trust-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page .listing-data-trust-card {
+    padding: 10px !important;
+  }
+
+  .listing-detail-page .listing-photo-hero {
+    min-height: 240px !important;
+  }
+
+  .listing-detail-page .listing-photo-thumbnail-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .listing-photo-modal {
+    padding: 16px !important;
+  }
+
+  .listing-photo-modal-header {
+    top: 12px !important;
+    left: 14px !important;
+    right: 62px !important;
+    display: grid !important;
+    gap: 8px !important;
+  }
+
+  .listing-photo-modal-close {
+    top: 12px !important;
+    right: 12px !important;
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .listing-photo-modal-nav {
+    top: auto !important;
+    bottom: 18px !important;
+    transform: none !important;
+    width: 42px !important;
+    height: 42px !important;
+  }
+
+  .listing-photo-modal-nav-prev {
+    left: 18px !important;
+  }
+
+  .listing-photo-modal-nav-next {
+    right: 18px !important;
+  }
+
+  .listing-photo-modal-help {
+    display: none !important;
+  }
+
+  .listing-detail-page [style*="display: flex"] {
+    min-width: 0 !important;
+    flex-wrap: wrap !important;
+  }
+
+  .listing-detail-page .pointer-events-none.invisible.absolute {
+    display: none !important;
+  }
+
+  .listing-detail-page .group:hover > .pointer-events-none.invisible.absolute,
+  .listing-detail-page .group:focus-within > .pointer-events-none.invisible.absolute {
+    display: block !important;
+    position: fixed !important;
+    left: 16px !important;
+    right: 16px !important;
+    top: auto !important;
+    bottom: 16px !important;
+    width: auto !important;
+    max-width: none !important;
+    transform: none !important;
+    z-index: 60 !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  .dashboard-hero {
+    padding: 16px !important;
+    border-radius: 14px !important;
+    margin-bottom: 16px !important;
+    gap: 14px !important;
+  }
+
+  .listing-detail-header {
+    gap: 12px !important;
+  }
+
+  .listing-detail-page .listing-header-command-panel {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+    padding: 10px !important;
+    margin-top: 12px !important;
+    border-radius: 14px !important;
+  }
+
+  .listing-detail-page .listing-header-command-verdict {
+    padding: 11px !important;
+    gap: 10px !important;
+  }
+
+  .listing-detail-page .listing-header-command-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 7px !important;
+    width: 100% !important;
+  }
+
+  .listing-detail-page .listing-header-command-actions a {
+    width: 100% !important;
+  }
+
+  .listing-detail-page .listing-header-command-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page .listing-header-command-metric {
+    padding: 10px !important;
+  }
+
+  .listing-detail-page .listing-header-command-metric-detail {
+    display: none !important;
+  }
+
+  .listing-detail-page .listing-header-command-footnote {
+    font-size: 11px !important;
+  }
+
+  .listing-detail-page .listing-header-secondary-row,
+  .listing-detail-page .listing-header-copy {
+    display: none !important;
+  }
+
+  .listing-detail-page .listing-opening-panel {
+    padding: 12px !important;
+    border-radius: 14px !important;
+  }
+
+  .listing-detail-page .listing-opening-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .listing-detail-page .listing-opening-media {
+    gap: 10px !important;
+    order: 2 !important;
+  }
+
+  .listing-detail-page .listing-opening-returns {
+    order: 1 !important;
+  }
+
+  .dashboard-page h1 {
+    font-size: clamp(24px, 8vw, 30px) !important;
+    line-height: 1.15 !important;
+  }
+
+  .dashboard-page h2 {
+    font-size: clamp(18px, 5.4vw, 22px) !important;
+    line-height: 1.25 !important;
+  }
+
+  .dashboard-page p {
+    line-height: 1.6 !important;
+  }
+
+  .dashboard-card-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+  }
+
+  .dashboard-page [style*="grid-template-columns: repeat(auto-fit"],
+  .dashboard-page [style*="grid-template-columns: repeat(auto-fill"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-page .listing-card .listing-card-primary-metrics,
+  .dashboard-page .listing-card .listing-card-review-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-page .listing-card .listing-card-media {
+    min-height: 132px !important;
+  }
+
+  .dashboard-page .listing-card .listing-card-primary-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .listing-card .listing-card-metric-tile {
+    padding: 9px !important;
+  }
+
+  .dashboard-page .listing-card .listing-card-return-top-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+
+  .dashboard-page .listing-card .listing-card-capital-fit {
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+    padding: 9px !important;
+  }
+
+  .dashboard-page .listing-card .listing-card-support-summary {
+    align-items: flex-start !important;
+    gap: 8px !important;
+    padding: 9px !important;
+  }
+
+  .dashboard-page .listing-card .listing-card-support-body {
+    padding: 9px !important;
+  }
+
+  .dashboard-page .listing-card .listing-card-cashflow-mini {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-page .listing-card .listing-card-formula-disclosure summary {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 3px !important;
+  }
+
+  .dashboard-page .listing-card .listing-card-formula-stack {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-page .listing-card .listing-card-score-note,
+  .dashboard-page .listing-card .listing-card-review-note {
+    display: none !important;
+  }
+
+  .dashboard-top-opportunity .dashboard-top-opportunity-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-top-opportunity {
+    padding: 14px !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-top-opportunity-title {
+    display: -webkit-box !important;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .dashboard-top-opportunity .dashboard-top-opportunity-metrics > div {
+    padding: 10px !important;
+  }
+
+  .dashboard-top-opportunity .dashboard-top-opportunity-metrics p:nth-child(2) {
+    font-size: clamp(18px, 5.6vw, 22px) !important;
+  }
+
+  .dashboard-top-opportunity .dashboard-top-opportunity-metrics p:nth-child(3) {
+    font-size: 11px !important;
+    margin-top: 5px !important;
+  }
+
+  .dashboard-top-opportunity-aside {
+    padding: 10px !important;
+  }
+
+  .dashboard-top-opportunity-aside > div {
+    display: none !important;
+  }
+
+  .dashboard-investor-readout {
+    padding: 14px !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-page .dashboard-results-command {
+    grid-template-columns: 1fr !important;
+    padding: 12px !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-page .dashboard-results-command-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .dashboard-results-command-actions > a,
+  .dashboard-page .dashboard-results-command-actions > button {
+    width: 100% !important;
+    justify-content: center !important;
+    min-height: 42px !important;
+  }
+
+  .dashboard-page .dashboard-results-command-screen {
+    grid-template-columns: 1fr !important;
+    padding: 10px !important;
+  }
+
+  .dashboard-page .dashboard-queue-readout-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .dashboard-results-status-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .market-action-panel {
+    padding: 14px !important;
+  }
+
+  .dashboard-page .market-action-grid {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+  }
+
+  .dashboard-page .market-action-grid > a,
+  .dashboard-page .market-action-grid > button {
+    min-height: 124px !important;
+    padding: 12px !important;
+  }
+
+  .dashboard-page .market-command-panel {
+    grid-template-columns: 1fr !important;
+    padding: 12px !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-page .market-command-verdict {
+    padding: 12px !important;
+  }
+
+  .dashboard-page .market-command-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .market-command-actions > a,
+  .dashboard-page .market-command-actions > button {
+    width: 100% !important;
+    min-height: 42px !important;
+  }
+
+  .dashboard-page .market-command-signal-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .market-command-signal-card {
+    padding: 10px !important;
+  }
+
+  .dashboard-page .market-state-panel {
+    padding: 16px !important;
+  }
+
+  .dashboard-page .market-state-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .dashboard-page .market-state-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .market-state-actions > a,
+  .dashboard-page .market-state-actions > button,
+  .dashboard-page .market-state-actions > span {
+    width: 100% !important;
+    min-height: 42px !important;
+  }
+
+  .dashboard-page .properties-state-panel {
+    padding: 16px !important;
+  }
+
+  .dashboard-page .properties-action-plan {
+    padding: 14px !important;
+  }
+
+  .dashboard-page .properties-action-plan-header {
+    gap: 8px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .dashboard-page .properties-action-proof-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .properties-action-proof-card {
+    padding: 9px !important;
+  }
+
+  .dashboard-page .properties-action-proof-card > span:last-child {
+    display: none !important;
+  }
+
+  .dashboard-page .properties-action-plan-grid {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+  }
+
+  .dashboard-page .properties-action-plan-grid > a,
+  .dashboard-page .properties-action-plan-grid > button {
+    min-height: 124px !important;
+    padding: 12px !important;
+  }
+
+  .dashboard-page .properties-review-path-summary {
+    gap: 8px !important;
+  }
+
+  .dashboard-page .properties-state-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .dashboard-page .properties-state-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .properties-state-actions > a,
+  .dashboard-page .properties-state-actions > button,
+  .dashboard-page .properties-state-actions > span {
+    width: 100% !important;
+    min-height: 42px !important;
+  }
+
+  .dashboard-page .montreal-state-panel {
+    padding: 16px !important;
+  }
+
+  .dashboard-page .montreal-state-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .dashboard-page .montreal-state-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .montreal-state-actions > a,
+  .dashboard-page .montreal-state-actions > button,
+  .dashboard-page .montreal-state-actions > span {
+    width: 100% !important;
+    min-height: 42px !important;
+  }
+
+  .dashboard-page .montreal-source-preview-summary {
+    gap: 8px !important;
+  }
+
+  .dashboard-page .dashboard-empty-queue {
+    padding: 16px !important;
+  }
+
+  .dashboard-page .dashboard-empty-queue-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .dashboard-page .dashboard-empty-queue-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .dashboard-empty-queue-actions > a,
+  .dashboard-page .dashboard-empty-queue-actions > button {
+    width: 100% !important;
+    justify-content: center !important;
+    min-height: 42px !important;
+    white-space: normal !important;
+  }
+
+  .dashboard-page .dashboard-queue-readout-tile {
+    padding: 10px !important;
+  }
+
+  .dashboard-page .dashboard-queue-readout-tile p:nth-child(2) {
+    font-size: clamp(18px, 5.6vw, 22px) !important;
+  }
+
+  .dashboard-page .dashboard-decision-snapshot {
+    padding: 14px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .dashboard-decision-snapshot-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .dashboard-decision-signal-card {
+    padding: 10px !important;
+  }
+
+  .dashboard-page [style*="minmax(300px"],
+  .dashboard-page [style*="minmax(320px"],
+  .dashboard-page [style*="minmax(340px"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-page .dashboard-review-focus-panel {
+    padding: 14px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .dashboard-review-focus-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .dashboard-review-focus-grid button {
+    padding: 10px !important;
+  }
+
+  .dashboard-page .dashboard-review-focus-grid button > span:first-child {
+    align-items: flex-start !important;
+    gap: 6px !important;
+  }
+
+  .dashboard-page .underwriting-jump-nav {
+    padding: 12px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .underwriting-hero {
+    padding: 14px !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-page .underwriting-hero-copy {
+    display: none !important;
+  }
+
+  .dashboard-page .underwriting-hero-actions {
+    padding: 12px !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .underwriting-command-bar {
+    grid-template-columns: 1fr !important;
+    padding: 12px !important;
+    gap: 9px !important;
+  }
+
+  .dashboard-page .underwriting-command-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .underwriting-command-metric-card {
+    padding: 9px !important;
+  }
+
+  .dashboard-page .underwriting-command-actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-page .underwriting-scenario-switch {
+    padding: 12px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .underwriting-scenario-switch-header {
+    gap: 9px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .dashboard-page .underwriting-scenario-switch-header > div:last-child {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .dashboard-page .underwriting-scenario-switch-grid {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+  }
+
+  .dashboard-page .underwriting-save-status-bar {
+    top: 8px !important;
+    grid-template-columns: 1fr !important;
+    padding: 10px !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .underwriting-save-status-metrics {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 6px !important;
+  }
+
+  .dashboard-page .underwriting-save-status-metric {
+    padding: 8px !important;
+  }
+
+  .dashboard-page .underwriting-save-status-actions {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-page .underwriting-save-status-actions > button,
+  .dashboard-page .underwriting-save-status-actions > a,
+  .dashboard-page .underwriting-save-status-actions > div {
+    width: 100% !important;
+  }
+
+  .dashboard-page .underwriting-scenario-switch-card {
+    padding: 10px !important;
+  }
+
+  .dashboard-page .underwriting-scenario-button-grid,
+  .dashboard-page .underwriting-scenario-rent-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .underwriting-scenario-button {
+    min-height: 64px !important;
+    padding: 8px !important;
+  }
+
+  .dashboard-page .underwriting-lane-snapshot {
+    margin-top: 12px !important;
+  }
+
+  .dashboard-page .underwriting-lane-snapshot-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    margin-top: 8px !important;
+  }
+
+  .dashboard-page .underwriting-hero-lane-card {
+    padding: 8px !important;
+    gap: 3px !important;
+  }
+
+  .dashboard-page .underwriting-hero-lane-subdetail {
+    display: none !important;
+  }
+
+  .dashboard-page .underwriting-next-action {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+    padding: 14px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .underwriting-next-action-side {
+    min-width: 0 !important;
+  }
+
+  .dashboard-page .underwriting-next-action-side strong {
+    text-align: left !important;
+  }
+
+  .dashboard-page .underwriting-formula-bridge {
+    padding: 14px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .underwriting-formula-disclosure {
+    padding: 0 !important;
+  }
+
+  .dashboard-page .underwriting-formula-summary {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+    padding: 12px !important;
+  }
+
+  .dashboard-page .underwriting-formula-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .underwriting-formula-card {
+    padding: 10px !important;
+  }
+
+  .dashboard-page .underwriting-jump-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .underwriting-jump-link {
+    padding: 10px !important;
+  }
+
+  .dashboard-page .underwriting-confidence-strip {
+    padding: 14px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .underwriting-confidence-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .underwriting-confidence-card {
+    padding: 10px !important;
+  }
+
+  .dashboard-page .underwriting-readiness-strip {
+    padding: 14px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .underwriting-readiness-summary {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+    width: 100% !important;
+  }
+
+  .dashboard-page .underwriting-readiness-summary > span {
+    text-align: center !important;
+    white-space: normal !important;
+  }
+
+  .dashboard-page .underwriting-readiness-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .underwriting-readiness-card {
+    padding: 10px !important;
+  }
+
+  .dashboard-page .underwriting-input-section-stack {
+    gap: 10px !important;
+  }
+
+  .dashboard-page .underwriting-input-section {
+    padding: 12px !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-page .underwriting-input-section-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-page .underwriting-cash-filter-header {
+    align-items: stretch !important;
+  }
+
+  .dashboard-page .underwriting-cash-filter-header > label {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .dashboard-page .underwriting-cash-preset-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .dashboard-page .underwriting-cash-impact-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-page .calculator-bridge-metric-grid,
+  .dashboard-page .calculator-year-grid,
+  .dashboard-page .calculator-lever-grid,
+  .dashboard-page .calculator-preset-grid,
+  .dashboard-page .calculator-downpayment-impact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .calculator-bridge-formula-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .calculator-bridge-formula-summary {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-page .calculator-bridge-metric,
+  .dashboard-page .calculator-year-card,
+  .dashboard-page .calculator-lever-card,
+  .dashboard-page .calculator-bridge-formula-card,
+  .dashboard-page .calculator-preset-button,
+  .dashboard-page .calculator-downpayment-impact-card {
+    padding: 10px !important;
+  }
+
+  .dashboard-page .calculator-decision-strip {
+    padding: 14px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .calculator-scenario-quick-controls {
+    padding: 12px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .calculator-scenario-quick-header {
+    gap: 9px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .dashboard-page .calculator-scenario-quick-header > div:last-child {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .dashboard-page .calculator-scenario-quick-grid {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+  }
+
+  .dashboard-page .calculator-scenario-quick-card {
+    padding: 10px !important;
+  }
+
+  .dashboard-page .calculator-scenario-quick-button-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .calculator-scenario-quick-button {
+    min-height: 62px !important;
+    padding: 8px !important;
+  }
+
+  .dashboard-page .calculator-decision-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-page .calculator-decision-return-card {
+    order: 1;
+  }
+
+  .dashboard-page .calculator-decision-copy {
+    order: 2;
+  }
+
+  .dashboard-page .calculator-decision-action-stack {
+    order: 3;
+  }
+
+  .dashboard-page .calculator-decision-formula-stack {
+    gap: 6px !important;
+  }
+
+  .dashboard-page .calculator-decision-actions,
+  .dashboard-page .calculator-decision-links {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .calculator-decision-actions > a,
+  .dashboard-page .calculator-decision-actions > button,
+  .dashboard-page .calculator-decision-links > a {
+    width: 100% !important;
+    justify-content: center !important;
+    min-height: 40px !important;
+    white-space: normal !important;
+  }
+
+  .dashboard-page .calculator-scenario-status {
+    padding: 14px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .calculator-scenario-status-header {
+    gap: 8px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .dashboard-page .calculator-scenario-change-grid,
+  .dashboard-page .calculator-driver-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .calculator-scenario-change-grid > div,
+  .dashboard-page .calculator-driver-grid > div {
+    padding: 9px !important;
+  }
+
+  .dashboard-page .calculator-preset-button > span:first-child {
+    align-items: flex-start !important;
+    gap: 6px !important;
+  }
+
+  .dashboard-page .calculator-input-section {
+    padding: 10px !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-page .calculator-input-section-grid {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+  }
+
+  .dashboard-page [style*="display: flex"] {
+    min-width: 0;
+  }
+
+  .dashboard-page a,
+  .dashboard-page button {
+    min-height: 40px;
+  }
+
+  .sold-audit-row {
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-page .sold-state-panel {
+    padding: 16px !important;
+  }
+
+  .dashboard-page .sold-state-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  .dashboard-page .sold-state-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .sold-state-actions > a,
+  .dashboard-page .sold-state-actions > button,
+  .dashboard-page .sold-state-actions > span {
+    width: 100% !important;
+    min-height: 42px !important;
+  }
+
+  .sold-page .sold-hero-copy,
+  .sold-page .sold-hero-source-row {
+    display: none !important;
+  }
+
+  .sold-page .sold-hero-capture {
+    font-size: 12px !important;
+    line-height: 1.45 !important;
+  }
+
+  .dashboard-page .sold-command-panel {
+    grid-template-columns: 1fr !important;
+    padding: 14px !important;
+    gap: 10px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .sold-command-verdict,
+  .dashboard-page .sold-command-proof {
+    padding: 12px !important;
+  }
+
+  .dashboard-page .sold-command-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .sold-command-actions > a,
+  .dashboard-page .sold-command-actions > button {
+    width: 100% !important;
+    min-height: 42px !important;
+    white-space: normal !important;
+  }
+
+  .dashboard-page .sold-command-signal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .sold-command-signal-card {
+    padding: 8px !important;
+    gap: 3px !important;
+  }
+
+  .dashboard-page .sold-command-signal-card > span:first-child {
+    display: none !important;
+  }
+
+  .dashboard-page .sold-command-signal-detail {
+    display: none !important;
+  }
+
+  .dashboard-page .sold-action-plan {
+    padding: 14px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .sold-action-plan-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .sold-action-plan-card {
+    padding: 10px !important;
+  }
+
+  .dashboard-page .sold-lesson-strip {
+    padding: 14px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .sold-lesson-strip-header {
+    gap: 8px !important;
+    margin-bottom: 10px !important;
+  }
+
+  .dashboard-page .sold-lesson-grid {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+  }
+
+  .dashboard-page .sold-lesson-grid > a,
+  .dashboard-page .sold-lesson-grid > button {
+    min-height: 124px !important;
+    padding: 12px !important;
+  }
+
+  .dashboard-page .sold-removal-evidence-guide {
+    padding: 14px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .dashboard-page .sold-removal-evidence-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .sold-removal-evidence-card {
+    padding: 10px !important;
+  }
+
+  .dashboard-page .sold-focus-button-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .sold-focus-button-grid button {
+    padding: 10px !important;
+  }
+
+  .dashboard-page .sold-focus-button-grid button > span:first-child {
+    align-items: flex-start !important;
+    gap: 6px !important;
+  }
+
+  .dashboard-page .sold-focus-command-bar {
+    grid-template-columns: 1fr !important;
+    justify-items: stretch !important;
+    gap: 9px !important;
+    padding: 12px !important;
+  }
+
+  .dashboard-page .sold-focus-command-bar > div {
+    justify-items: stretch !important;
+  }
+
+  .dashboard-page .sold-focus-command-bar a,
+  .dashboard-page .sold-focus-command-bar button {
+    flex: 1 1 92px !important;
+  }
+
+  .dashboard-page .sold-roi-formula-disclosure summary {
+    align-items: flex-start !important;
+    flex-direction: column !important;
+    gap: 3px !important;
+  }
+
+  .dashboard-page .profile-action-panel,
+  .dashboard-page .profile-action-panel-compact {
+    grid-template-columns: 1fr !important;
+    padding: 14px !important;
+    gap: 12px !important;
+  }
+
+  .dashboard-page .profile-hero {
+    grid-template-columns: 1fr !important;
+    padding: 16px !important;
+    gap: 12px !important;
+  }
+
+  .dashboard-page .profile-hero h1 {
+    font-size: clamp(24px, 8vw, 30px) !important;
+  }
+
+  .dashboard-page .profile-hero-action-row {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .profile-hero-action-row > a,
+  .dashboard-page .profile-hero-back-link {
+    width: 100% !important;
+    min-height: 42px !important;
+    justify-content: center !important;
+    white-space: normal !important;
+    text-align: center !important;
+  }
+
+  .dashboard-page .profile-action-controls,
+  .dashboard-page .profile-action-buttons {
+    width: 100% !important;
+  }
+
+  .dashboard-page .profile-action-buttons {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-page .profile-action-buttons > button {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .dashboard-page .profile-action-metric-row {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+  }
+
+  .dashboard-page .profile-command-panel {
+    grid-template-columns: 1fr !important;
+    padding: 14px !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-page .profile-command-verdict,
+  .dashboard-page .profile-command-proof {
+    padding: 12px !important;
+  }
+
+  .dashboard-page .profile-command-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .profile-command-actions > a {
+    width: 100% !important;
+    min-height: 42px !important;
+  }
+
+  .dashboard-page .profile-command-progress-row {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 7px !important;
+  }
+
+  .dashboard-page .profile-command-progress-row > span {
+    justify-content: center !important;
+    text-align: center !important;
+  }
+
+  .dashboard-page .profile-command-signal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .profile-command-signal-card {
+    padding: 8px !important;
+    gap: 3px !important;
+  }
+
+  .dashboard-page .profile-command-signal-card > span:first-child {
+    display: none !important;
+  }
+
+  .dashboard-page .profile-command-signal-detail {
+    display: none !important;
+  }
+
+  .dashboard-page .profile-assumption-summary {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+    padding: 14px !important;
+  }
+
+  .dashboard-page .profile-assumption-disclosure > div {
+    padding: 0 14px 14px !important;
+  }
+
+  .dashboard-page .profile-operating-section {
+    padding: 12px !important;
+    gap: 10px !important;
+  }
+
+  .dashboard-page .profile-expense-template-grid {
+    grid-template-columns: 1fr !important;
+    gap: 9px !important;
+  }
+
+  .dashboard-page .profile-expense-template-card {
+    padding: 11px !important;
+  }
+
+  .dashboard-page .profile-screening-preview {
+    padding: 14px !important;
+  }
+
+  .dashboard-page .profile-screening-preview-header {
+    gap: 10px !important;
+  }
+
+  .dashboard-page .profile-screening-preview-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .profile-screening-preview-card {
+    padding: 11px !important;
+  }
+
+  .dashboard-page .profile-screening-preview-actions {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .dashboard-page .profile-screening-preview-actions > a,
+  .dashboard-page .profile-screening-preview-actions > span {
+    width: 100% !important;
+    justify-content: center !important;
+    text-align: center !important;
+  }
+
+  .sidebar-nav-link {
+    gap: 6px !important;
+    padding: 8px 9px !important;
+    font-size: 13px !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .listing-detail-page [data-testid="investor-first-glance"] .investor-operating-bridge-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

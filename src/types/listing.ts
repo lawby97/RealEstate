@@ -48,6 +48,7 @@ export type FinancingScenarioId =
   | "bridge_conventional_small_bay_refi"
   | "bridge_cmhc_income_property_takeout"
   | "owner_occupied_improvement_refi"
+  | "personal_plex_lender_exception"
   | "conventional_multifamily_hold"
   | "cmhc_standard_rental_existing"
   | "mli_select_existing"

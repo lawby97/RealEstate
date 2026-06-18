@@ -4,6 +4,7 @@ import { signIn } from "next-auth/react";
 import Link from "next/link";
 import { useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { AuthFormError, AuthFormSummary, AuthShell, AuthSubmitButton, AuthTextField } from "@/components/auth/AuthShell";
 
 function SignInForm() {
   const [email, setEmail] = useState("");
@@ -12,6 +13,7 @@ function SignInForm() {
   const [loading, setLoading] = useState(false);
   const searchParams = useSearchParams();
   const callbackUrl = searchParams.get("callbackUrl") ?? "/";
+  const signupHref = `/signup?callbackUrl=${encodeURIComponent(callbackUrl)}`;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,188 +49,100 @@ function SignInForm() {
   };
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "#f1f5f9",
-        padding: 24,
-      }}
+    <AuthShell
+      accentColor="#2563eb"
+      background="linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%)"
+      eyebrow="INVESTOR LISTINGS"
+      title="Welcome back"
+      subtitle="Sign in to keep underwriting assumptions, deal queues, and listing review synced to your investor profile."
+      ctaHref={signupHref}
+      ctaLabel="Sign up"
+      ctaColor="#16a34a"
+      calloutTitle="Your profile controls the screening model."
+      calloutBody="Saved borrower and operating assumptions flow into dashboard filters, listing detail pages, and underwriting scenarios."
+      workflowTitle="Screen deals with your own borrower box"
+      workflowBody="The account layer is where saved assumptions turn generic listing math into a repeatable acquisition workflow."
+      highlights={[
+        {
+          label: "Cash and borrowing limits",
+          detail: "Max cash required, down payment, and borrower route stay attached to every screen.",
+        },
+        {
+          label: "Occupancy and rental income",
+          detail: "Owner-occupied and investor rental assumptions stay consistent across pages.",
+        },
+        {
+          label: "Operating defaults",
+          detail: "Insurance, repairs, utilities, and snow assumptions can fill gaps in sparse listings.",
+        },
+      ]}
+      steps={[
+        {
+          label: "Load profile",
+          detail: "Pull saved cash, occupancy, and operating assumptions.",
+        },
+        {
+          label: "Resume queue",
+          detail: "Return to dashboard and listings with your filters intact.",
+        },
+        {
+          label: "Underwrite",
+          detail: "Use saved borrower defaults on the deal file.",
+        },
+      ]}
+      footer={
+        <>
+          <p style={{ textAlign: "center", marginTop: 20, fontSize: 14, color: "#64748b" }}>
+            Don&apos;t have an account?{" "}
+            <Link href={signupHref} style={{ color: "#2563eb", fontWeight: 700, textDecoration: "none" }}>
+              Sign up
+            </Link>
+          </p>
+
+          <p style={{ textAlign: "center", marginTop: 24, marginBottom: 0 }}>
+            <Link href="/" style={{ fontSize: 14, color: "#64748b", textDecoration: "none" }}>
+              Back to listings
+            </Link>
+          </p>
+        </>
+      }
     >
-      <div
-        style={{
-          backgroundColor: "#fff",
-          padding: "32px 40px",
-          borderRadius: 16,
-          boxShadow: "0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -2px rgba(0,0,0,0.06)",
-          border: "1px solid #e2e8f0",
-          width: "100%",
-          maxWidth: 420,
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-          <div>
-            <h1 style={{ fontSize: 28, fontWeight: 700, margin: 0, color: "#0f172a" }}>
-              Sign in
-            </h1>
-            <p style={{ fontSize: 14, color: "#64748b", margin: "8px 0 0 0" }}>
-              Sign in to save lists and track deals.
-            </p>
-          </div>
-          <Link
-            href="/signup"
-            style={{
-              padding: "10px 18px",
-              border: "2px solid #16a34a",
-              borderRadius: 10,
-              color: "#16a34a",
-              backgroundColor: "#fff",
-              textDecoration: "none",
-              fontWeight: 600,
-              fontSize: 14,
-            }}
-          >
-            Sign up
-          </Link>
-        </div>
+      <AuthFormSummary
+        accentColor="#2563eb"
+        title="Resume the same underwriting lens"
+        detail="Signing in restores your saved borrower box and operating assumptions before you open cards or edit deal files."
+        items={[
+          { label: "Destination", value: callbackUrl.includes("profile") ? "Profile setup" : "Dashboard queue" },
+          { label: "Restores", value: "Cash cap, occupancy, lender lane" },
+        ]}
+      />
 
-        <div style={{ marginTop: 28 }}>
-          <p style={{ fontSize: 13, color: "#64748b", marginBottom: 12 }}>Continue with</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <button
-              type="button"
-              disabled
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 10,
-                padding: "12px 16px",
-                border: "1px solid #e2e8f0",
-                borderRadius: 10,
-                backgroundColor: "#fff",
-                fontSize: 14,
-                fontWeight: 500,
-                color: "#64748b",
-                cursor: "not-allowed",
-              }}
-            >
-              <span style={{ fontSize: 18 }}>G</span>
-              Continue with Google
-              <span style={{ fontSize: 12, color: "#94a3b8" }}> (not configured)</span>
-            </button>
-            <button
-              type="button"
-              disabled
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 10,
-                padding: "12px 16px",
-                border: "1px solid #e2e8f0",
-                borderRadius: 10,
-                backgroundColor: "#fff",
-                fontSize: 14,
-                fontWeight: 500,
-                color: "#64748b",
-                cursor: "not-allowed",
-              }}
-            >
-              Continue with Apple
-              <span style={{ fontSize: 12, color: "#94a3b8" }}> (not configured)</span>
-            </button>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: 16, margin: "24px 0" }}>
-          <div style={{ flex: 1, height: 1, backgroundColor: "#e2e8f0" }} />
-          <span style={{ fontSize: 13, color: "#94a3b8" }}>Or with email</span>
-          <div style={{ flex: 1, height: 1, backgroundColor: "#e2e8f0" }} />
-        </div>
-
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <div>
-            <label htmlFor="email" style={{ display: "block", fontSize: 14, fontWeight: 500, color: "#374151", marginBottom: 6 }}>
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-              style={{
-                width: "100%",
-                padding: "12px 14px",
-                border: "1px solid #e2e8f0",
-                borderRadius: 10,
-                fontSize: 15,
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-          <div>
-            <label htmlFor="password" style={{ display: "block", fontSize: 14, fontWeight: 500, color: "#374151", marginBottom: 6 }}>
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              placeholder="Your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              style={{
-                width: "100%",
-                padding: "12px 14px",
-                border: "1px solid #e2e8f0",
-                borderRadius: 10,
-                fontSize: 15,
-                boxSizing: "border-box",
-              }}
-            />
-          </div>
-          {error && (
-            <p style={{ margin: 0, fontSize: 13, color: "#dc2626" }}>{error}</p>
-          )}
-          <button
-            type="submit"
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: "14px 16px",
-              backgroundColor: "#16a34a",
-              color: "#fff",
-              border: "none",
-              borderRadius: 10,
-              fontSize: 16,
-              fontWeight: 600,
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
-          >
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-
-        <p style={{ textAlign: "center", marginTop: 20, fontSize: 14, color: "#64748b" }}>
-          Don&apos;t have an account?{" "}
-          <Link href="/signup" style={{ color: "#16a34a", fontWeight: 600, textDecoration: "none" }}>
-            Sign up
-          </Link>
-        </p>
-
-        <p style={{ textAlign: "center", marginTop: 24, marginBottom: 0 }}>
-          <Link href="/" style={{ fontSize: 14, color: "#64748b", textDecoration: "none" }}>
-            ← Back to listings
-          </Link>
-        </p>
-      </div>
-    </div>
+      <form onSubmit={handleSubmit} className="auth-form" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <AuthTextField
+          id="email"
+          label="Email"
+          type="email"
+          placeholder="you@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          required
+          autoComplete="email"
+        />
+        <AuthTextField
+          id="password"
+          label="Password"
+          type="password"
+          placeholder="Your password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+        />
+        {error && <AuthFormError>{error}</AuthFormError>}
+        <AuthSubmitButton disabled={loading} backgroundColor="#2563eb">
+          {loading ? "Signing in..." : "Sign in and resume screening"}
+        </AuthSubmitButton>
+      </form>
+    </AuthShell>
   );
 }
 

@@ -11,7 +11,12 @@ import type {
   StrategyUnitRentLineItem,
   UnitRentBenchmark,
 } from "@/types/listing";
-import type { BridgeFacilityResult, FinanceResult, ReturnBridgeResult } from "./finance";
+import type {
+  BridgeFacilityResult,
+  CashflowProjectionResult,
+  FinanceResult,
+  ReturnBridgeResult,
+} from "./finance";
 import {
   computeBuyAndHold,
   computeBridgeFacility,
@@ -79,6 +84,7 @@ export interface StrategyModel {
   modeledRentBasisLabel: string;
   capitalPlan: StrategyCapitalPlan;
   result: FinanceResult;
+  cashflowProjection: CashflowProjectionResult;
   stabilizedValue: number | null;
   bridgeFacility: BridgeFacilityResult | null;
   returnBridge: ReturnBridgeResult;
@@ -106,6 +112,7 @@ interface StrategyPreset {
   vacancyShift: number;
   closingCostPct: number;
   mortgageRate: number;
+  mortgageRateLabel?: string;
   amortizationYears: number;
   ltvPct: number;
   takeoutLtvPct?: number;
@@ -143,6 +150,20 @@ interface StrategyModelInput {
   operatingExpenseTemplate?: OperatingExpenseTemplate | null;
 }
 
+const RATE_ASSUMPTIONS = {
+  insuredResidential: 0.0435,
+  ownerOccupiedConventional: 0.0475,
+  smallRentalConventional: 0.0495,
+  personalPlexException: 0.0495,
+  cmhcSmallRental: 0.0465,
+  cmhcStandardRental: 0.045,
+  mliSelect: 0.0435,
+  conventionalMultifamily: 0.0525,
+  constructionTakeout: 0.0525,
+  bridge: 0.0695,
+  landCarry: 0.0575,
+} as const;
+
 const PRESETS: Record<StrategyId, StrategyPreset> = {
   conventional_owner_occupied: {
     businessPlanId: "live_in_homeowner",
@@ -166,7 +187,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "current",
     vacancyShift: 0,
     closingCostPct: 0.02,
-    mortgageRate: 0.052,
+    mortgageRate: RATE_ASSUMPTIONS.ownerOccupiedConventional,
     amortizationYears: 30,
     ltvPct: 0.9,
     holdPeriodYears: 5,
@@ -198,7 +219,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "current",
     vacancyShift: 0,
     closingCostPct: 0.02,
-    mortgageRate: 0.049,
+    mortgageRate: RATE_ASSUMPTIONS.insuredResidential,
     amortizationYears: 25,
     ltvPct: 0.95,
     holdPeriodYears: 5,
@@ -230,7 +251,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "current",
     vacancyShift: 0,
     closingCostPct: 0.02,
-    mortgageRate: 0.0485,
+    mortgageRate: RATE_ASSUMPTIONS.insuredResidential,
     amortizationYears: 30,
     ltvPct: 0.95,
     holdPeriodYears: 5,
@@ -262,7 +283,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "renovated",
     vacancyShift: 0.005,
     closingCostPct: 0.0225,
-    mortgageRate: 0.0495,
+    mortgageRate: 0.045,
     amortizationYears: 25,
     ltvPct: 0.9,
     holdPeriodYears: 5,
@@ -295,7 +316,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "current",
     vacancyShift: 0,
     closingCostPct: 0.02,
-    mortgageRate: 0.055,
+    mortgageRate: RATE_ASSUMPTIONS.smallRentalConventional,
     amortizationYears: 30,
     ltvPct: 0.8,
     holdPeriodYears: 5,
@@ -326,7 +347,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "current",
     vacancyShift: 0,
     closingCostPct: 0.02,
-    mortgageRate: 0.05,
+    mortgageRate: RATE_ASSUMPTIONS.cmhcSmallRental,
     amortizationYears: 25,
     ltvPct: 0.8,
     holdPeriodYears: 5,
@@ -357,7 +378,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "renovated",
     vacancyShift: 0.005,
     closingCostPct: 0.0225,
-    mortgageRate: 0.051,
+    mortgageRate: RATE_ASSUMPTIONS.cmhcSmallRental,
     amortizationYears: 25,
     ltvPct: 0.8,
     holdPeriodYears: 5,
@@ -366,6 +387,55 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     appreciationShift: 0,
     capitalPlanLabel: "Improvement budget is included for the small-rental scope.",
     programId: "cmhc_improvement_small_rental",
+    requiresBridgeLoan: false,
+    bridgeUsage: "not_needed",
+    showStabilizedValue: true,
+  },
+  personal_plex_lender_exception: {
+    businessPlanId: "multifamily_hold",
+    overview:
+      "Personal-borrower exception path for an existing 5-8 unit plex when a lender such as RBC or Desjardins confirms residential/personal treatment in writing.",
+    underwritingMode: "current_income",
+    targetPropertyTypes: ["5-8 unit plex", "Quintuplex", "Sixplex", "Sevenplex", "Eightplex"],
+    suitableAssetTypes: ["apartment", "mixed_use"],
+    strategyVariants: [
+      {
+        name: "Personal plex exception",
+        propertyTypes: ["5-8 unit plex"],
+        description:
+          "Screen the acquisition as a personal-borrower exception first, then plan a commercial takeout once NOI is documented.",
+      },
+    ],
+    modelBasis: [
+      "Uses current market rent and an 80% LTV personal-borrower exception assumption.",
+      "This is not treated as CMHC Standard Rental or ordinary commercial underwriting unless the selected lender requires that route.",
+    ],
+    executionPlan: [
+      "Get written confirmation of the unit-count exception, rental-income inclusion method, borrower/title structure, and reporting treatment before offer removal.",
+      "Model the later commercial refinance separately; personal debt release is a lender decision, not an automatic result of refinancing.",
+    ],
+    financingPlan: [
+      "RBC/Desjardins-style personal mortgage exception modeled at 80% LTV with 30-year amortization.",
+      "Commercial takeout remains a separate exit/refinance test after stabilization.",
+    ],
+    keyRisks: [
+      "Public lender pages do not establish this as a universal 5-8 unit rule, so the file needs written approval.",
+      "The acquisition debt may remain personally reported or personally guaranteed until the takeout lender explicitly releases it.",
+    ],
+    rentBasis: "current",
+    vacancyShift: 0,
+    closingCostPct: 0.0225,
+    mortgageRate: RATE_ASSUMPTIONS.personalPlexException,
+    mortgageRateLabel:
+      "RBC/Desjardins-style personal 5-8 plex screening rate. Public personal mortgage pages can be lower, but rental purpose, exception approval, amortization, borrower strength, and insurer/lender treatment can change pricing; replace with a written lender quote before offer removal.",
+    amortizationYears: 30,
+    ltvPct: 0.8,
+    holdPeriodYears: 7,
+    renoCostPerSqFt: 0,
+    exitCapRate: 0.055,
+    appreciationShift: 0,
+    capitalPlanLabel: "No major repositioning budget is assumed in the personal plex exception base case.",
+    programId: "personal_plex_lender_exception",
     requiresBridgeLoan: false,
     bridgeUsage: "not_needed",
     showStabilizedValue: true,
@@ -389,12 +459,12 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "renovated",
     vacancyShift: 0.01,
     closingCostPct: 0.025,
-    mortgageRate: 0.06,
+    mortgageRate: RATE_ASSUMPTIONS.conventionalMultifamily,
     amortizationYears: 30,
     ltvPct: 0.8,
     takeoutLtvPct: 0.8,
     bridgeAdvancePct: 0.8,
-    bridgeRateAnnual: 0.0845,
+    bridgeRateAnnual: RATE_ASSUMPTIONS.bridge,
     bridgeTermMonths: 12,
     bridgeFeePct: 0.01,
     bridgeInterestReserveMonths: 6,
@@ -427,12 +497,12 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "renovated",
     vacancyShift: 0.01,
     closingCostPct: 0.025,
-    mortgageRate: 0.05,
+    mortgageRate: RATE_ASSUMPTIONS.cmhcSmallRental,
     amortizationYears: 25,
     ltvPct: 0.8,
     takeoutLtvPct: 0.8,
     bridgeAdvancePct: 0.78,
-    bridgeRateAnnual: 0.0845,
+    bridgeRateAnnual: RATE_ASSUMPTIONS.bridge,
     bridgeTermMonths: 12,
     bridgeFeePct: 0.01,
     bridgeInterestReserveMonths: 6,
@@ -465,7 +535,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "renovated",
     vacancyShift: 0.005,
     closingCostPct: 0.0225,
-    mortgageRate: 0.0495,
+    mortgageRate: 0.045,
     amortizationYears: 25,
     ltvPct: 0.9,
     holdPeriodYears: 5,
@@ -498,7 +568,9 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "current",
     vacancyShift: 0,
     closingCostPct: 0.0225,
-    mortgageRate: 0.0565,
+    mortgageRate: RATE_ASSUMPTIONS.conventionalMultifamily,
+    mortgageRateLabel:
+      "Conventional multifamily screening rate. This is intentionally separate from the 5-8 unit personal exception path and should be replaced with a lender term sheet or broker quote.",
     amortizationYears: 30,
     ltvPct: 0.75,
     holdPeriodYears: 7,
@@ -529,7 +601,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "current",
     vacancyShift: 0,
     closingCostPct: 0.02,
-    mortgageRate: 0.049,
+    mortgageRate: RATE_ASSUMPTIONS.cmhcStandardRental,
     amortizationYears: 40,
     ltvPct: 0.85,
     takeoutLtvPct: 0.85,
@@ -566,7 +638,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "affordable",
     vacancyShift: 0,
     closingCostPct: 0.02,
-    mortgageRate: 0.045,
+    mortgageRate: RATE_ASSUMPTIONS.mliSelect,
     amortizationYears: 45,
     ltvPct: 0.85,
     takeoutLtvPct: 0.85,
@@ -603,7 +675,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "renovated",
     vacancyShift: 0.015,
     closingCostPct: 0.025,
-    mortgageRate: 0.0575,
+    mortgageRate: RATE_ASSUMPTIONS.conventionalMultifamily,
     amortizationYears: 30,
     ltvPct: 0.75,
     takeoutLtvPct: 0.75,
@@ -641,7 +713,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "renovated",
     vacancyShift: 0.015,
     closingCostPct: 0.025,
-    mortgageRate: 0.049,
+    mortgageRate: RATE_ASSUMPTIONS.cmhcStandardRental,
     amortizationYears: 40,
     ltvPct: 0.75,
     takeoutLtvPct: 0.85,
@@ -679,7 +751,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "renovated",
     vacancyShift: 0.015,
     closingCostPct: 0.025,
-    mortgageRate: 0.045,
+    mortgageRate: RATE_ASSUMPTIONS.mliSelect,
     amortizationYears: 45,
     ltvPct: 0.75,
     takeoutLtvPct: 0.85,
@@ -717,7 +789,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "new_build",
     vacancyShift: 0,
     closingCostPct: 0.04,
-    mortgageRate: 0.055,
+    mortgageRate: RATE_ASSUMPTIONS.constructionTakeout,
     amortizationYears: 30,
     ltvPct: 0.75,
     takeoutLtvPct: 0.75,
@@ -757,7 +829,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "new_build",
     vacancyShift: 0,
     closingCostPct: 0.04,
-    mortgageRate: 0.052,
+    mortgageRate: 0.0475,
     amortizationYears: 50,
     ltvPct: 0.8,
     takeoutLtvPct: 0.85,
@@ -797,7 +869,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "new_build",
     vacancyShift: 0,
     closingCostPct: 0.04,
-    mortgageRate: 0.0475,
+    mortgageRate: RATE_ASSUMPTIONS.mliSelect,
     amortizationYears: 50,
     ltvPct: 0.85,
     takeoutLtvPct: 0.95,
@@ -837,7 +909,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "new_build",
     vacancyShift: 0,
     closingCostPct: 0.035,
-    mortgageRate: 0.0475,
+    mortgageRate: RATE_ASSUMPTIONS.mliSelect,
     amortizationYears: 50,
     ltvPct: 0.95,
     takeoutLtvPct: 0.95,
@@ -877,7 +949,7 @@ const PRESETS: Record<StrategyId, StrategyPreset> = {
     rentBasis: "interim",
     vacancyShift: 0,
     closingCostPct: 0.025,
-    mortgageRate: 0.06,
+    mortgageRate: RATE_ASSUMPTIONS.landCarry,
     amortizationYears: 25,
     ltvPct: 0.65,
     takeoutLtvPct: 0.65,
@@ -961,7 +1033,6 @@ function modeledRent(
   unitRentBenchmarks: UnitRentBenchmark[]
 ): { rentAssumption: AssumptionValue<number>; unitRentSchedule: StrategyUnitRentLineItem[] } {
   const current = defaults.currentMarketRent.value;
-  const turnover = defaults.turnoverMarketRent.value;
   const renovated = defaults.renovatedRentProxy.value;
   const modeledAverage =
     current > 0 && renovated > 0
@@ -978,13 +1049,17 @@ function modeledRent(
     };
   }
 
-  const usesTurnoverMarketRent =
+  const usesCurrentMarketRent =
     preset.rentBasis === "current" || preset.rentBasis === "affordable" || preset.rentBasis === "interim";
   const usesTurnoverProxy = preset.rentBasis === "renovated" || preset.rentBasis === "new_build";
 
   if (unitRentBenchmarks.length > 0) {
     const unitRentSchedule = unitRentBenchmarks.map((unit) => {
-      const modeledRent = usesTurnoverMarketRent ? unit.turnoverMarketRent : usesTurnoverProxy ? unit.renovatedRentProxy : unit.modeledMarketRent;
+      const modeledRent = usesCurrentMarketRent
+        ? unit.currentMarketRent
+        : usesTurnoverProxy
+          ? unit.renovatedRentProxy
+          : unit.modeledMarketRent;
 
       return {
         unitNumber: unit.unitNumber,
@@ -1001,8 +1076,8 @@ function modeledRent(
       unitRentSchedule.reduce((sum, unit) => sum + unit.modeledRent.value, 0) / unitRentSchedule.length
     );
 
-    const basisLabel = usesTurnoverMarketRent
-      ? defaults.turnoverMarketRent.label
+    const basisLabel = usesCurrentMarketRent
+      ? defaults.currentMarketRent.label
       : usesTurnoverProxy
         ? defaults.renovatedRentProxy.label
         : `Average of ${defaults.currentMarketRent.label} and ${defaults.renovatedRentProxy.label}.`;
@@ -1016,12 +1091,12 @@ function modeledRent(
     };
   }
 
-  const scalarLabel = usesTurnoverMarketRent
-    ? defaults.turnoverMarketRent.label
+  const scalarLabel = usesCurrentMarketRent
+    ? defaults.currentMarketRent.label
     : usesTurnoverProxy
       ? defaults.renovatedRentProxy.label
       : `Average of ${defaults.currentMarketRent.label} and ${defaults.renovatedRentProxy.label}.`;
-  const scalarValue = usesTurnoverMarketRent ? turnover : usesTurnoverProxy ? renovated : modeledAverage;
+  const scalarValue = usesCurrentMarketRent ? current : usesTurnoverProxy ? renovated : modeledAverage;
 
   return {
     rentAssumption: assume(
@@ -1052,6 +1127,18 @@ function modeledRentsForMli(
   }
 
   return [rentModel.rentAssumption.value];
+}
+
+function unitMonthlyRentsForProjection(
+  unitCount: number,
+  rentModel: { unitRentSchedule: StrategyUnitRentLineItem[] }
+): number[] | undefined {
+  const modeledUnitCount = Math.max(0, Math.round(unitCount));
+  if (modeledUnitCount <= 0 || rentModel.unitRentSchedule.length !== modeledUnitCount) {
+    return undefined;
+  }
+
+  return rentModel.unitRentSchedule.map((unit) => Math.max(0, unit.modeledRent.value));
 }
 
 function buildAssumptions(
@@ -1145,7 +1232,11 @@ function buildAssumptions(
     ),
     closingCostPct: assume(preset.closingCostPct, "Acquisition cost allowance from the spreadsheet-style basis."),
     exitCapRate: assume(preset.exitCapRate, "Exit cap used to translate stabilized NOI into value."),
-    mortgageRate: assume(preset.mortgageRate, "Debt pricing assumption for the selected financing path."),
+    mortgageRate: assume(
+      preset.mortgageRate,
+      preset.mortgageRateLabel ??
+        "Screening debt-pricing assumption for the selected financing path; replace with a lender quote before offer removal."
+    ),
     amortizationYears: assume(amortization, "Amortization aligned to the financing path."),
     ltvPct: assume(
       Math.min(preset.ltvPct, programEnvelope.maxLeveragePct),
@@ -1258,6 +1349,7 @@ function buildOne(input: StrategyModelInput): StrategyModel {
   );
   const capitalPlan = buildCapitalPlan(preset, input.squareFeet, unitAssumption.value);
   const financeOperatingExpenses = toFinanceOperatingExpenseItems(assumptions.operatingExpenses);
+  const unitMonthlyRents = unitMonthlyRentsForProjection(unitAssumption.value, rentModel);
   const permanentLtv = preset.requiresBridgeLoan
     ? assumptions.takeoutLtvPct.value
     : assumptions.ltvPct.value;
@@ -1266,6 +1358,7 @@ function buildOne(input: StrategyModelInput): StrategyModel {
     price: input.price,
     units: unitAssumption.value,
     avgMonthlyRentPerUnit: rentModel.rentAssumption.value,
+    unitMonthlyRents,
     vacancyRate: assumptions.vacancyRate.value,
     operatingExpenseItems: financeOperatingExpenses,
     mortgageRate: assumptions.mortgageRate.value,
@@ -1293,6 +1386,7 @@ function buildOne(input: StrategyModelInput): StrategyModel {
       price: input.price,
       units: unitAssumption.value,
       avgMonthlyRentPerUnit: rentModel.rentAssumption.value,
+      unitMonthlyRents,
       vacancyRate: assumptions.vacancyRate.value,
       operatingExpenseItems: financeOperatingExpenses,
       mortgageRate: assumptions.mortgageRate.value,
@@ -1389,6 +1483,7 @@ function buildOne(input: StrategyModelInput): StrategyModel {
     modeledRentBasisLabel: rentModel.rentAssumption.label,
     capitalPlan,
     result,
+    cashflowProjection,
     stabilizedValue: strategyStabilizedValue,
     bridgeFacility,
     returnBridge,

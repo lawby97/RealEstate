@@ -21,6 +21,7 @@ export type ProgramId =
   | "cmhc_improvement_owner_occupied"
   | "cmhc_improvement_small_rental"
   | "cmhc_income_property"
+  | "personal_plex_lender_exception"
   | "cmhc_standard_rental_existing"
   | "cmhc_standard_rental_new_construction"
   | "mli_select_existing"
@@ -164,6 +165,18 @@ export const FINANCING_PROGRAMS: Record<ProgramId, FinancingProgramRule> = {
     leverageMetric: "LTV",
     minDscr: 1,
     notes: "2-4 unit non-owner-occupied rental; 20% minimum equity.",
+  },
+  personal_plex_lender_exception: {
+    id: "personal_plex_lender_exception",
+    name: "Personal 5-8 Plex Exception",
+    minUnits: 5,
+    maxUnits: 8,
+    maxLeveragePct: 0.8,
+    maxAmortizationYears: 30,
+    leverageMetric: "LTV",
+    minDscr: 1,
+    notes:
+      "Exception-style personal borrower lane for 5-8 unit plex files when a lender such as RBC or Desjardins confirms residential/personal treatment in writing.",
   },
   cmhc_standard_rental_existing: {
     id: "cmhc_standard_rental_existing",
@@ -366,6 +379,8 @@ export function getMinimumDownPaymentRule(programId?: ProgramId): MinimumDownPay
       "CMHC Improvement for small rental is capped at 80% LTV in this model, so the minimum equity is 20%.",
     cmhc_income_property:
       "CMHC Income Property is capped at 80% LTV for 2-4 unit non-owner-occupied rental, so the minimum equity is 20%.",
+    personal_plex_lender_exception:
+      "Some 5-8 unit plex files may be treated on a personal borrower lane by lender exception. This model uses an 80% LTV ceiling and requires written lender confirmation.",
     cmhc_standard_rental_existing:
       "CMHC Standard Rental (existing) is capped at 85% LTV, so the minimum modeled equity is 15%.",
     cmhc_standard_rental_new_construction:

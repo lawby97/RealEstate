@@ -1,11 +1,14 @@
 import { NextRequest } from "next/server";
-import { prisma } from "@/lib/prisma";
-import { evaluateListing } from "@/lib/evaluation";
 import {
   fetchAllRealtorCaListings,
   mapRealtorCaListing,
   type RealtorCaListing,
 } from "@/lib/realtor-ca-api";
+import {
+  MONTREAL_ISLAND_5PLEX_FILTER,
+  MONTREAL_ISLAND_5PLEX_SYNC_SCOPE,
+  syncRealtorCaSnapshot,
+} from "@/lib/listing-sync";
 
 const MAX_RESULTS_DEFAULT = 200;
 const MAX_RESULTS_CAP = 500;
@@ -39,6 +42,20 @@ export async function POST(req: NextRequest) {
     const minBedrooms = searchParams.get("minBedrooms") ? parseInt(searchParams.get("minBedrooms")!, 10) : undefined;
     const maxBedrooms = searchParams.get("maxBedrooms") ? parseInt(searchParams.get("maxBedrooms")!, 10) : undefined;
     const buildingTypeId = searchParams.get("buildingTypeId") ? parseInt(searchParams.get("buildingTypeId")!, 10) : undefined;
+    const syncScope = searchParams.get("syncScope") ?? searchParams.get("captureScope") ?? "realtor_ca_direct";
+    const useMontrealFiveplexDefaults =
+      syncScope === MONTREAL_ISLAND_5PLEX_SYNC_SCOPE ||
+      searchParams.get("captureScope") === MONTREAL_ISLAND_5PLEX_SYNC_SCOPE;
+    const filters = useMontrealFiveplexDefaults
+      ? MONTREAL_ISLAND_5PLEX_FILTER
+      : {
+          minPrice,
+          maxPrice,
+          units: searchParams.get("units") ? parseInt(searchParams.get("units")!, 10) : undefined,
+        };
+    const markMissingAsSold =
+      searchParams.get("markMissingAsSold") === "1" ||
+      searchParams.get("markMissingAsSold") === "true";
 
     const rawListings = await fetchAllRealtorCaListings({
       provinceCode,
@@ -67,7 +84,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (preview) {
-      const mapped = (rawListings as RealtorCaListing[]).map((raw) => mapRealtorCaListing(raw));
+      const mapped = (rawListings as RealtorCaListing[])
+        .map((raw) => mapRealtorCaListing(raw))
+        .filter((listing) => {
+          if (filters.minPrice != null && listing.price < filters.minPrice) return false;
+          if (filters.maxPrice != null && listing.price > filters.maxPrice) return false;
+          if (filters.units != null && listing.units !== filters.units) return false;
+          return true;
+        });
       return Response.json({
         ok: true,
         source: "realtor_ca",
@@ -78,85 +102,20 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    let created = 0;
-    let updated = 0;
-
-    for (const raw of rawListings as RealtorCaListing[]) {
-      const mapped = mapRealtorCaListing(raw);
-      const listing = await prisma.listing.upsert({
-        where: { externalId: mapped.externalId },
-        create: {
-          ...mapped,
-          isLinkActive: null,
-          linkCheckedAt: null,
-          linkStatusCode: null,
-          linkStatusNote: null,
-        },
-        update: {
-          price: mapped.price,
-          address: mapped.address,
-          city: mapped.city,
-          province: mapped.province,
-          postalCode: mapped.postalCode,
-          latitude: mapped.latitude,
-          longitude: mapped.longitude,
-          bedrooms: mapped.bedrooms,
-          bathrooms: mapped.bathrooms,
-          squareFeet: mapped.squareFeet,
-          lotSizeSqFt: mapped.lotSizeSqFt,
-          yearBuilt: mapped.yearBuilt,
-          description: mapped.description,
-          photoUrls: mapped.photoUrls,
-          listingUrl: mapped.listingUrl,
-          lastSeenAt: new Date(),
-          isLinkActive: null,
-          linkCheckedAt: null,
-          linkStatusCode: null,
-          linkStatusNote: null,
-          rawJson: mapped.rawJson,
-        },
-      });
-      if (listing.createdAt.getTime() === listing.updatedAt.getTime()) created++;
-      else updated++;
-
-      const result = evaluateListing({
-        price: listing.price,
-        city: listing.city,
-        province: listing.province,
-        postalCode: listing.postalCode,
-        units: listing.units,
-        bedrooms: listing.bedrooms,
-      });
-
-      await prisma.listingEvaluation.upsert({
-        where: { listingId: listing.id },
-        create: {
-          listingId: listing.id,
-          cashflowScore: result.cashflowScore,
-          equityGrowthScore: result.equityGrowthScore,
-          combinedScore: result.combinedScore,
-          cashflowNotes: result.cashflowNotes,
-          equityNotes: result.equityNotes,
-        },
-        update: {
-          cashflowScore: result.cashflowScore,
-          equityGrowthScore: result.equityGrowthScore,
-          combinedScore: result.combinedScore,
-          cashflowNotes: result.cashflowNotes,
-          equityNotes: result.equityNotes,
-          computedAt: new Date(),
-        },
-      });
-    }
+    const result = await syncRealtorCaSnapshot(rawListings as RealtorCaListing[], {
+      syncScope,
+      minPrice: filters.minPrice,
+      maxPrice: filters.maxPrice,
+      units: filters.units,
+      cityNames: "cityNames" in filters ? filters.cityNames : undefined,
+      markMissingAsSold,
+    });
 
     return Response.json({
       ok: true,
-      source: "realtor_ca",
       fetched: rawListings.length,
-      created,
-      updated,
-      evaluated: rawListings.length,
-      message: `Upserted ${rawListings.length} listings from Realtor.ca.`,
+      ...result,
+      message: `Upserted ${result.accepted} scoped listings from Realtor.ca (${result.soldMarked} marked sold).`,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Realtor.ca scrape failed";

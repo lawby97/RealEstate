@@ -22,6 +22,14 @@ export interface ListingDetailPayload {
   listing: {
     id: string;
     externalId: string;
+    listingStatus: string;
+    soldAt: Date | null;
+    unavailableSince: Date | null;
+    createdAt: Date;
+    lastSeenAt: Date;
+    lastSyncRunAt: Date | null;
+    isLinkActive: boolean | null;
+    linkCheckedAt: Date | null;
     address: string;
     city: string;
     province: string;
@@ -56,6 +64,81 @@ function toAssumptionValue(
   label: string
 ): AssumptionValue<number> {
   return { value, source, label };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function firstNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value.replace(/[^0-9.-]/g, ""));
+      if (Number.isFinite(parsed)) return parsed;
+    }
+  }
+  return null;
+}
+
+function parseListingRawJson(rawJson: string | null): Record<string, unknown> {
+  if (!rawJson) return {};
+  try {
+    return asRecord(JSON.parse(rawJson));
+  } catch {
+    return {};
+  }
+}
+
+function sourceProvidedTaxFacts(rawJson: string | null): {
+  exactAnnualTax: number | null;
+  exactAnnualTaxYear: number | null;
+  sourceLabel: string | null;
+  sourceSummary: string | null;
+  formulaSummary: string | null;
+} {
+  const raw = parseListingRawJson(rawJson);
+  const municipalTaxes = firstNumber(raw.municipalTaxes);
+  const schoolTaxes = firstNumber(raw.schoolTaxes);
+  const components: string[] = [];
+  if (municipalTaxes != null && municipalTaxes > 0) {
+    components.push(`municipal taxes ${municipalTaxes.toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 })}`);
+  }
+  if (schoolTaxes != null && schoolTaxes > 0) {
+    components.push(`school taxes ${schoolTaxes.toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 })}`);
+  }
+
+  const exactAnnualTax = [municipalTaxes, schoolTaxes]
+    .filter((value): value is number => value != null && value > 0)
+    .reduce((sum, value) => sum + value, 0);
+  if (exactAnnualTax <= 0) {
+    return {
+      exactAnnualTax: null,
+      exactAnnualTaxYear: null,
+      sourceLabel: null,
+      sourceSummary: null,
+      formulaSummary: null,
+    };
+  }
+
+  const taxYears = [firstNumber(raw.municipalTaxesYear), firstNumber(raw.schoolTaxesYear)]
+    .filter((value): value is number => value != null && value > 0);
+  const exactAnnualTaxYear = taxYears.length > 0 ? Math.max(...taxYears.map((value) => Math.round(value))) : null;
+  const sourceSummary = `Centris municipal plus school tax captured from the listing${exactAnnualTaxYear ? ` (${exactAnnualTaxYear})` : ""}`;
+  const formulaSummary =
+    components.length > 0
+      ? `Annual municipal + school tax = ${components.join(" + ")} = ${exactAnnualTax.toLocaleString("en-CA", { style: "currency", currency: "CAD", maximumFractionDigits: 0 })} per year`
+      : null;
+
+  return {
+    exactAnnualTax,
+    exactAnnualTaxYear,
+    sourceLabel: "Centris municipal and school taxes",
+    sourceSummary,
+    formulaSummary,
+  };
 }
 
 export async function getListingDetailPayload(
@@ -109,6 +192,7 @@ export async function getListingDetailPayload(
   };
 
   const appreciationRate = listing.area?.appreciationRateAnnual ?? 0.04;
+  const sourceTaxFacts = sourceProvidedTaxFacts(listing.rawJson);
   const propertyTaxEstimate = resolvePropertyTaxEstimate({
     city: listing.city,
     province: listing.province,
@@ -118,6 +202,12 @@ export async function getListingDetailPayload(
     normalizedUnits: profile.normalizedUnits,
     purchasePrice: listing.price,
     residentialShareEstimated: profile.residentialShareEstimated,
+    exactAnnualTax: sourceTaxFacts.exactAnnualTax,
+    exactAnnualTaxYear: sourceTaxFacts.exactAnnualTaxYear,
+    exactAnnualTaxSourceLabel: sourceTaxFacts.sourceLabel,
+    exactAnnualTaxSourceSummary: sourceTaxFacts.sourceSummary,
+    exactAnnualTaxFormulaSummary: sourceTaxFacts.formulaSummary,
+    assessedValue: null,
   });
   const defaultCurrentMarketRent = marketBenchmark.benchmarkCurrentRent ?? 1500;
   const defaultVacancyRate = marketBenchmark.benchmarkVacancyRate ?? 0.03;
@@ -179,7 +269,7 @@ export async function getListingDetailPayload(
     renoCostPerSqFt: toAssumptionValue(50, "assumed", "Default $/sq ft"),
     closingCostPct: toAssumptionValue(0.02, "assumed", "2%"),
     exitCapRate: toAssumptionValue(0.055, "assumed", "5.5%"),
-    mortgageRate: toAssumptionValue(0.055, "assumed", "5.5%"),
+    mortgageRate: toAssumptionValue(0.0495, "assumed", "4.95% screening mortgage rate"),
     amortizationYears: toAssumptionValue(30, "assumed", "30 years"),
     ltvPct: toAssumptionValue(0.75, "assumed", "75% LTV"),
     takeoutLtvPct: toAssumptionValue(0.75, "assumed", "75% takeout LTV default"),
@@ -212,6 +302,14 @@ export async function getListingDetailPayload(
     listing: {
       id: listing.id,
       externalId: listing.externalId,
+      listingStatus: listing.listingStatus,
+      soldAt: listing.soldAt,
+      unavailableSince: listing.unavailableSince,
+      createdAt: listing.createdAt,
+      lastSeenAt: listing.lastSeenAt,
+      lastSyncRunAt: listing.lastSyncRunAt,
+      isLinkActive: listing.isLinkActive,
+      linkCheckedAt: listing.linkCheckedAt,
       address: listing.address,
       city: listing.city,
       province: listing.province,

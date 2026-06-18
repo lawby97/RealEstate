@@ -16,6 +16,7 @@ export interface FinanceInputs {
   price: number;
   units: number;
   avgMonthlyRentPerUnit: number;
+  unitMonthlyRents?: number[];
   vacancyRate: number; // 0–1
   managementFeeRate?: number; // 0–1
   operatingExpenseRatio?: number; // legacy fallback if explicit line items are not provided
@@ -77,10 +78,36 @@ export interface CashflowBridgeInputs {
 }
 
 /**
- * Gross Scheduled Rent = units × avg monthly rent × 12
+ * Gross Scheduled Rent = unit rent roll × 12, with average rent fallback.
  */
-export function grossScheduledRent(units: number, avgMonthlyRent: number): number {
-  return units * avgMonthlyRent * 12;
+export function grossScheduledRent(
+  units: number,
+  avgMonthlyRent: number,
+  unitMonthlyRents?: number[]
+): number {
+  const rentableUnits = Math.max(0, Math.round(units));
+  const sanitizedUnitRents =
+    unitMonthlyRents
+      ?.map((rent) => (Number.isFinite(rent) ? Math.max(0, rent) : 0))
+      .filter((rent) => rent >= 0) ?? [];
+
+  if (sanitizedUnitRents.length > 0 && sanitizedUnitRents.length === rentableUnits) {
+    return sanitizedUnitRents.reduce((sum, rent) => sum + rent, 0) * 12;
+  }
+
+  return rentableUnits * Math.max(0, avgMonthlyRent) * 12;
+}
+
+export function averageMonthlyRentFromSchedule(
+  units: number,
+  avgMonthlyRent: number,
+  unitMonthlyRents?: number[]
+): number {
+  const rentableUnits = Math.max(0, Math.round(units));
+  if (rentableUnits <= 0) return 0;
+
+  const gsr = grossScheduledRent(rentableUnits, avgMonthlyRent, unitMonthlyRents);
+  return gsr / 12 / rentableUnits;
 }
 
 /**
@@ -187,7 +214,7 @@ export function capRate(noiAmount: number, price: number): number {
 export function computeBuyAndHold(inputs: FinanceInputs): FinanceResult {
   const capitalBudget = inputs.capitalBudget ?? 0;
   const basisPrice = inputs.price + capitalBudget;
-  const gsr = grossScheduledRent(inputs.units, inputs.avgMonthlyRentPerUnit);
+  const gsr = grossScheduledRent(inputs.units, inputs.avgMonthlyRentPerUnit, inputs.unitMonthlyRents);
   const otherIncomeAnnual = (inputs.otherIncomeMonthly ?? 0) * 12;
   const egi = effectiveGrossIncome(gsr, inputs.vacancyRate, otherIncomeAnnual);
 
@@ -300,9 +327,13 @@ export function computeCashflowProjection(inputs: {
   for (let year = 1; year <= holdPeriodYears; year += 1) {
     const avgMonthlyRentPerUnit =
       inputs.financeInputs.avgMonthlyRentPerUnit * Math.pow(1 + rentGrowthRateAnnual, year - 1);
+    const unitMonthlyRents = inputs.financeInputs.unitMonthlyRents?.map((rent) =>
+      Math.max(0, rent) * Math.pow(1 + rentGrowthRateAnnual, year - 1)
+    );
     const baseResult = computeBuyAndHold({
       ...inputs.financeInputs,
       avgMonthlyRentPerUnit,
+      unitMonthlyRents,
     });
 
     let annualDebtServiceAmount = baseResult.annualDebtService;
@@ -403,7 +434,11 @@ export function computeCashflowProjection(inputs: {
 
     years.push({
       year,
-      avgMonthlyRentPerUnit,
+      avgMonthlyRentPerUnit: averageMonthlyRentFromSchedule(
+        inputs.financeInputs.units,
+        avgMonthlyRentPerUnit,
+        unitMonthlyRents
+      ),
       cumulativeCashflow,
       loanBalanceEnd,
       principalPaidYear,
