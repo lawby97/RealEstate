@@ -293,7 +293,7 @@ export default async function ListingDetailPage({
       href: "#listing-returns",
       label: "Returns",
       detail: investorSnapshot
-        ? `${formatPercent(investorSnapshot.cashOnCashReturn)} selected-path CoC · ${formatCurrency(investorSnapshot.totalYearOneReturn)} ROI value`
+        ? `${formatPercent(investorSnapshot.cashOnCashReturn)} selected-path CoC · ${formatCurrency(investorSnapshot.totalYearOneReturn)} Y1 modeled return`
         : "Selected-path cashflow and return snapshot",
     },
     {
@@ -346,7 +346,7 @@ export default async function ListingDetailPage({
                 : "This record is no longer part of the active inventory."}
             </div>
           )}
-          <div style={styles.badgeRow}>
+          <div className="listing-primary-badge-row" style={styles.badgeRow}>
             <HeaderBadge>{listing.propertyType}</HeaderBadge>
             <HeaderBadge>
               {listing.units} {listing.units === 1 ? "unit" : "units"}
@@ -355,9 +355,9 @@ export default async function ListingDetailPage({
             {isNewListing && <FreshListingBadge>New: added in last 7 days</FreshListingBadge>}
           </div>
 
-          <h1 style={styles.address}>{displayAddress}</h1>
+          <h1 className="listing-address-title" style={styles.address}>{displayAddress}</h1>
 
-          <p style={styles.location}>
+          <p className="listing-location" style={styles.location}>
             {listing.city}, {listing.province}
             {listing.postalCode && ` · ${listing.postalCode}`}
           </p>
@@ -367,6 +367,7 @@ export default async function ListingDetailPage({
             pricePerUnit={pricePerUnit}
             units={listing.units}
             snapshot={investorSnapshot}
+            financeabilitySummary={financeabilitySummary}
             primaryAction={dealActionItems[0]}
             isInactiveListing={isInactiveListing}
             sourceLabel={sourceLabel}
@@ -393,12 +394,10 @@ export default async function ListingDetailPage({
           </div>
 
           <p className="listing-header-copy" style={styles.headerCopy}>
-            Use the command panel as the offer-triage read, then open the return model, photos, source facts, and underwriting proof below.
+            Use the deal verdict as the offer-triage read, then open the return model, photos, source facts, and underwriting proof below.
           </p>
         </div>
       </header>
-
-      <FinanceabilityVerdictPanel summary={financeabilitySummary} />
 
       <section
         id="listing-photos"
@@ -730,7 +729,7 @@ type DataTrustItem = {
   tone: ListingActionTone;
 };
 
-function FinanceabilityVerdictPanel({ summary }: { summary: FinanceabilityLaneSummary }) {
+function FinanceabilityLanesDisclosure({ summary }: { summary: FinanceabilityLaneSummary }) {
   const lane = summary.recommendedLane;
   const metrics = summary.topMetrics;
   const candidateLanes = summary.eligibleLanes.slice(0, 4);
@@ -739,31 +738,29 @@ function FinanceabilityVerdictPanel({ summary }: { summary: FinanceabilityLaneSu
   const primaryWarning = summary.policyWarnings[0];
 
   return (
-    <section
-      className="listing-financeability-panel listing-detail-section-anchor"
-      aria-label="Deal and financing verdict"
-      style={styles.financeabilityPanel}
+    <details
+      className="listing-financeability-panel"
+      aria-label="Financing lane details"
+      style={styles.financeabilityDisclosure}
     >
-      <div className="listing-financeability-hero" style={styles.financeabilityHero}>
+      <summary className="listing-detail-disclosure-summary" style={styles.financeabilityDisclosureSummary}>
         <div style={{ minWidth: 0 }}>
-          <p style={styles.financeabilityEyebrow}>Deal + financing verdict</p>
-          <h2 style={styles.financeabilityTitle}>
-            {lane ? financeabilityHeadline(lane) : "Financing lane needs more data"}
-          </h2>
-          <p style={styles.financeabilityCopy}>
+          <span style={styles.heroDisclosureEyebrow}>Financing lanes</span>
+          <strong style={styles.financeabilityDisclosureTitle}>Show lender lane proof and alternatives</strong>
+          <span style={styles.financeabilityDisclosureCopy}>
             {lane
-              ? lane.reason
-              : "The platform could not recommend a lane from the current model. Verify source facts, rent roll, and borrower context before relying on the return model."}
-          </p>
+              ? `${lane.label}: ${financeabilityLaneDetail(lane)}`
+              : "No financing lane selected yet; open this before relying on the deal model."}
+          </span>
         </div>
         <div style={{ ...styles.financeabilityVerdictBadge, ...financeabilityVerdictStyle(verdictTone) }}>
           {lane ? financeabilityStatusLabel(lane) : "Needs data"}
         </div>
-      </div>
+      </summary>
 
       <div className="listing-financeability-grid" style={styles.financeabilityGrid}>
         <FinanceabilityMetricCard
-          label="Recommended lane"
+          label="Most plausible lane"
           value={lane?.label ?? "n/a"}
           detail={lane ? financeabilityLaneDetail(lane) : "No lane selected yet."}
           tone={verdictTone}
@@ -829,7 +826,7 @@ function FinanceabilityVerdictPanel({ summary }: { summary: FinanceabilityLaneSu
           </p>
         </div>
       )}
-    </section>
+    </details>
   );
 }
 
@@ -848,6 +845,51 @@ function FinanceabilityMetricCard(props: {
       <span style={styles.financeabilityMetricDetail}>{props.detail}</span>
     </div>
   );
+}
+
+function buildUnifiedDealVerdict({
+  primaryAction,
+  cashflow,
+  cashOnCashReturn,
+  dscr,
+  lane,
+  isInactiveListing,
+}: {
+  primaryAction: ListingActionItem;
+  cashflow: number | null;
+  cashOnCashReturn: number | null;
+  dscr: number | null;
+  lane: FinanceabilityLaneSummaryItem | null;
+  isInactiveListing: boolean;
+}): { title: string; detail: string } {
+  if (isInactiveListing) {
+    return {
+      title: "Inactive source: use as a comp, not an active deal",
+      detail: primaryAction.detail,
+    };
+  }
+
+  const riskSignals = [
+    cashflow != null && cashflow < 0 ? `negative Y1 cashflow (${formatCurrency(cashflow)})` : null,
+    cashOnCashReturn != null && cashOnCashReturn < 0 ? `negative CoC (${formatPercent(cashOnCashReturn)})` : null,
+    dscr != null && dscr < 1.25 ? `weak DSCR (${formatRatio(dscr)})` : null,
+    lane?.status === "verify" ? "lender confirmation required" : null,
+    lane?.status === "blocked" ? "financing lane blocked" : null,
+  ].filter(Boolean);
+
+  if (riskSignals.length > 0) {
+    return {
+      title: `${primaryAction.value}: ${riskSignals.slice(0, 2).join(" + ")}`,
+      detail: `${primaryAction.detail} Financing read: ${lane ? `${lane.label} is ${financeabilityStatusLabel(lane).toLowerCase()}` : "lane unavailable"}. ${riskSignals.join("; ")}.`,
+    };
+  }
+
+  return {
+    title: primaryAction.value,
+    detail: lane
+      ? `${primaryAction.detail} Financing read: ${lane.label} is ${financeabilityStatusLabel(lane).toLowerCase()}.`
+      : primaryAction.detail,
+  };
 }
 
 function financeabilityHeadline(lane: FinanceabilityLaneSummaryItem): string {
@@ -1254,6 +1296,7 @@ function ListingHeaderCommandPanel({
   pricePerUnit,
   units,
   snapshot,
+  financeabilitySummary,
   primaryAction,
   isInactiveListing,
   sourceLabel,
@@ -1265,6 +1308,7 @@ function ListingHeaderCommandPanel({
   pricePerUnit: number | null;
   units: number;
   snapshot: InvestorSnapshot | null;
+  financeabilitySummary: FinanceabilityLaneSummary;
   primaryAction: ListingActionItem;
   isInactiveListing: boolean;
   sourceLabel: string;
@@ -1273,16 +1317,61 @@ function ListingHeaderCommandPanel({
   nightlyVerifiedLabel: string;
 }) {
   const firstYearCashflow = snapshot?.cashflowYears[0]?.annualCashflow ?? snapshot?.yearOneCashflow ?? null;
-  const threeYearCashflow =
-    snapshot?.cashflowYears.reduce((sum, year) => sum + year.annualCashflow, 0) ?? null;
+  const dscr = snapshot?.cashflowYears[0]?.dscr ?? snapshot?.dscr ?? financeabilitySummary.topMetrics?.dscr ?? null;
+  const recommendedLane = financeabilitySummary.recommendedLane;
+  const financeabilityToneValue = financeabilityTone(recommendedLane);
   const primaryTone = actionPlanTone(primaryAction.tone);
   const sourceTone = actionPlanTone(isInactiveListing ? "amber" : "green");
+  const missingTopInputs = [
+    !snapshot ? "return model unavailable" : null,
+    dscr == null ? "DSCR unavailable" : null,
+    !recommendedLane ? "financing lane unavailable" : null,
+    nightlyVerifiedLabel === "n/a" ? "nightly verification missing" : null,
+    !listingUrl ? "source link unavailable" : null,
+    isInactiveListing ? "source no longer active" : null,
+  ].filter(Boolean);
+  const dealVerdict = buildUnifiedDealVerdict({
+    primaryAction,
+    cashflow: firstYearCashflow,
+    cashOnCashReturn: snapshot?.cashOnCashReturn ?? null,
+    dscr,
+    lane: recommendedLane,
+    isInactiveListing,
+  });
   const metrics = [
     {
       label: "Asking price",
       value: formatCurrency(price),
       detail: pricePerUnit != null ? `${formatCurrency(pricePerUnit)} per unit` : `${units} modeled unit${units === 1 ? "" : "s"}`,
       tone: "blue",
+      href: "#listing-facts",
+    },
+    {
+      label: "Y1 cashflow",
+      value: firstYearCashflow != null ? formatCurrency(firstYearCashflow) : "n/a",
+      detail: firstYearCashflow != null
+        ? `${firstYearCashflow < 0 ? "Negative cashflow: " : "Cashflow: "}${formatCurrency(firstYearCashflow / 12)}/mo after debt`
+        : "Cashflow model unavailable.",
+      tone: numberTone(firstYearCashflow),
+      href: "#listing-returns",
+    },
+    {
+      label: "CoC return",
+      value: snapshot ? formatPercent(snapshot.cashOnCashReturn) : "n/a",
+      detail: snapshot?.cocCalculation ?? "Needs underwriting model.",
+      tone: numberTone(snapshot?.cashOnCashReturn ?? null),
+      href: "#listing-returns",
+    },
+    {
+      label: "DSCR",
+      value: dscr != null ? formatRatio(dscr) : "n/a",
+      detail: dscr == null
+        ? "Debt-service coverage unavailable."
+        : dscr < 1.25
+          ? "Weak DSCR below 1.25x; lender review needed."
+          : "Debt-service coverage clears first-pass threshold.",
+      tone: dscr == null ? "amber" : dscr >= 1.25 ? "green" : dscr >= 1 ? "amber" : "red",
+      href: "#listing-returns",
     },
     {
       label: "Cash required",
@@ -1293,37 +1382,21 @@ function ListingHeaderCommandPanel({
           } + costs/capex`
         : "Open underwriting to build the cash stack.",
       tone: snapshot ? "blue" : "amber",
+      href: "#listing-returns",
     },
     {
-      label: "Y1 cashflow",
-      value: firstYearCashflow != null ? formatCurrency(firstYearCashflow) : "n/a",
-      detail: firstYearCashflow != null ? `${formatCurrency(firstYearCashflow / 12)}/mo after debt` : "Cashflow model unavailable.",
-      tone: numberTone(firstYearCashflow),
+      label: "Financing lane",
+      value: recommendedLane?.label ?? "Needs review",
+      detail: recommendedLane
+        ? `${financeabilityStatusLabel(recommendedLane)}: ${financeabilityLaneDetail(recommendedLane)}`
+        : "No lender lane selected from the model.",
+      tone: financeabilityToneValue,
+      href: "#listing-underwriting",
     },
-    {
-      label: "3Y cashflow",
-      value: threeYearCashflow != null ? formatCurrency(threeYearCashflow) : "n/a",
-      detail: "Modeled cumulative cashflow across the first three years.",
-      tone: numberTone(threeYearCashflow),
-    },
-    {
-      label: "CoC return",
-      value: snapshot ? formatPercent(snapshot.cashOnCashReturn) : "n/a",
-      detail: snapshot?.cocCalculation ?? "Needs underwriting model.",
-      tone: numberTone(snapshot?.cashOnCashReturn ?? null),
-    },
-    {
-      label: "ROI value",
-      value: snapshot ? formatCurrency(snapshot.totalYearOneReturn) : "n/a",
-      detail: snapshot
-        ? `${formatPercent(snapshot.yearOneRoi)} year-one return incl. cashflow, paydown, appreciation.`
-        : "Needs underwriting model.",
-      tone: numberTone(snapshot?.totalYearOneReturn ?? null),
-    },
-  ] satisfies Array<{ label: string; value: string; detail: string; tone: ListingActionTone }>;
+  ] satisfies Array<{ label: string; value: string; detail: string; tone: ListingActionTone; href: string }>;
 
   return (
-    <section className="listing-header-command-panel" aria-label="Listing deal command summary" style={styles.headerCommandPanel}>
+    <section className="listing-header-command-panel" aria-label="Listing deal verdict summary" style={styles.headerCommandPanel}>
       <div
         className="listing-header-command-verdict"
         style={{
@@ -1333,9 +1406,9 @@ function ListingHeaderCommandPanel({
         }}
       >
         <div style={{ minWidth: 0 }}>
-          <span style={{ ...styles.headerCommandEyebrow, color: primaryTone.label }}>Deal command</span>
-          <strong style={styles.headerCommandTitle}>{primaryAction.value}</strong>
-          <p style={styles.headerCommandDetail}>{primaryAction.detail}</p>
+          <span style={{ ...styles.headerCommandEyebrow, color: primaryTone.label }}>Deal verdict</span>
+          <strong style={styles.headerCommandTitle}>{dealVerdict.title}</strong>
+          <p className="listing-header-command-detail" style={styles.headerCommandDetail}>{dealVerdict.detail}</p>
         </div>
         <div className="listing-header-command-actions" style={styles.headerCommandActions}>
           <a
@@ -1346,11 +1419,11 @@ function ListingHeaderCommandPanel({
             {primaryAction.action}
             <ArrowUpRight size={13} />
           </a>
-          <a href="#listing-returns" style={styles.headerCommandSecondaryAction}>
-            Return math
+          <a className="listing-header-command-secondary-action" href="#listing-returns" style={styles.headerCommandSecondaryAction}>
+            Show cashflow math
           </a>
           {listingUrl ? (
-            <a href={listingUrl} target="_blank" rel="noopener noreferrer" style={styles.headerCommandSecondaryAction}>
+            <a className="listing-header-command-secondary-action" href={listingUrl} target="_blank" rel="noopener noreferrer" style={styles.headerCommandSecondaryAction}>
               Open {sourceLabel}
               <ArrowUpRight size={13} />
             </a>
@@ -1361,25 +1434,40 @@ function ListingHeaderCommandPanel({
       <div className="listing-header-command-metrics" style={styles.headerCommandMetrics}>
         {metrics.map((metric) => {
           const tone = actionPlanTone(metric.tone);
-          return (
-            <div
-              key={metric.label}
-              className="listing-header-command-metric"
-              style={{
-                ...styles.headerCommandMetric,
-                backgroundColor: tone.bg,
-                borderColor: tone.border,
-              }}
-            >
+          const metricBody = (
+            <>
               <span style={{ ...styles.headerCommandMetricLabel, color: tone.label }}>{metric.label}</span>
               <strong style={styles.headerCommandMetricValue}>{metric.value}</strong>
               <span className="listing-header-command-metric-detail" style={styles.headerCommandMetricDetail}>
                 {metric.detail}
               </span>
-            </div>
+            </>
+          );
+          return (
+            <a
+              key={metric.label}
+              href={metric.href ?? undefined}
+              className="listing-header-command-metric"
+              style={{
+                ...styles.headerCommandMetric,
+                backgroundColor: tone.bg,
+                borderColor: tone.border,
+                cursor: "pointer",
+              }}
+            >
+              {metricBody}
+            </a>
           );
         })}
       </div>
+
+      {missingTopInputs.length > 0 && (
+        <div className="listing-header-command-warning" style={styles.headerCommandWarning}>
+          <strong>Screening confidence is limited:</strong> {missingTopInputs.join(", ")}. Treat this as triage, not offer-ready underwriting.
+        </div>
+      )}
+
+      <FinanceabilityLanesDisclosure summary={financeabilitySummary} />
 
       <div className="listing-header-command-footnote" style={styles.headerCommandFootnote}>
         <span style={{ ...styles.headerCommandFootnoteDot, backgroundColor: sourceTone.label }} />
@@ -1737,7 +1825,7 @@ function InvestorHeroSnapshot({
     snapshot.cashflowYears.length > 0
       ? `${snapshot.cashflowYears.map((year) => formatCurrency(year.annualCashflow)).join(" + ")} = ${formatCurrency(threeYearCashflow)}`
       : "Cashflow projection unavailable";
-  const roiValueCalculation = `${snapshot.roiBasis} = ${formatCurrency(snapshot.totalYearOneReturn)}`;
+  const modeledReturnCalculation = `${snapshot.roiBasis} = ${formatCurrency(snapshot.totalYearOneReturn)}`;
   const cashflowTone = threeYearCashflow > 0 ? "#166534" : threeYearCashflow < 0 ? "#991b1b" : "#334155";
 
   return (
@@ -1750,7 +1838,7 @@ function InvestorHeroSnapshot({
       <div style={styles.heroSnapshotHeader}>
         <div>
           <p style={styles.heroSnapshotEyebrow}>Selected path first glance</p>
-          <h2 style={styles.heroSnapshotTitle}>Underwriting cashflow, CoC, and ROI value</h2>
+          <h2 style={styles.heroSnapshotTitle}>Underwriting cashflow, CoC, and Y1 modeled return</h2>
         </div>
         <div style={styles.heroSnapshotPill}>{snapshot.strategyName}</div>
       </div>
@@ -1770,7 +1858,7 @@ function InvestorHeroSnapshot({
         <summary className="listing-detail-disclosure-summary" style={styles.heroDisclosureSummary}>
           <div style={{ minWidth: 0 }}>
             <span style={styles.heroDisclosureEyebrow}>Return calculations</span>
-            <strong style={styles.heroDisclosureTitle}>CoC, ROI value, and 3-year cashflow math</strong>
+            <strong style={styles.heroDisclosureTitle}>Show cashflow, CoC, and modeled-return math</strong>
             <span style={styles.heroDisclosureCopy}>
               Expands the formulas for audit mode after the high-signal cards have done their job.
             </span>
@@ -1789,10 +1877,10 @@ function InvestorHeroSnapshot({
             <span style={styles.heroSnapshotFormulaValue}>{snapshot.cocCalculation}</span>
           </div>
           <div style={styles.heroSnapshotFormulaItem}>
-            <span style={styles.heroSnapshotFormulaLabel}>ROI value calculation</span>
-            <span style={styles.heroSnapshotFormulaValue}>{roiValueCalculation}</span>
+            <span style={styles.heroSnapshotFormulaLabel}>Y1 modeled return calculation</span>
+            <span style={styles.heroSnapshotFormulaValue}>{modeledReturnCalculation}</span>
             <span style={styles.heroSnapshotFormulaSubvalue}>
-              {snapshot.roiCalculation} ({formatPercent(snapshot.yearOneRoi)} year-one ROI)
+              {snapshot.roiCalculation} ({formatPercent(snapshot.yearOneRoi)} Y1 modeled ROI; not all components are cash proceeds)
             </span>
           </div>
         </div>
@@ -1859,9 +1947,9 @@ function InvestorPriorityScorecard({
       tone: snapshot.cashOnCashReturn,
     },
     {
-      label: "ROI value",
+      label: "Y1 modeled return",
       value: formatCurrency(snapshot.totalYearOneReturn),
-      detail: `${formatPercent(snapshot.yearOneRoi)} year-one ROI on cash in`,
+      detail: `${formatPercent(snapshot.yearOneRoi)} Y1 modeled ROI on cash in`,
       tone: snapshot.totalYearOneReturn,
     },
   ];
@@ -2287,7 +2375,7 @@ function ListingReturnStickyBar({
           value={formatPercent(snapshot.cashOnCashReturn)}
           tone={snapshot.cashOnCashReturn}
         />
-        <StickyReturnMetric label="ROI value" value={formatCurrency(snapshot.totalYearOneReturn)} tone={snapshot.totalYearOneReturn} />
+        <StickyReturnMetric label="Y1 return" value={formatCurrency(snapshot.totalYearOneReturn)} tone={snapshot.totalYearOneReturn} />
         <StickyReturnMetric label="Cash in" value={formatCurrency(snapshot.equityRequired)} />
       </div>
       <a
@@ -2650,42 +2738,35 @@ const styles: Record<string, CSSProperties> = {
     lineHeight: 1.75,
     color: "#475569",
   },
-  financeabilityPanel: {
-    borderRadius: 18,
-    border: "1px solid #cbd5e1",
-    background: "linear-gradient(135deg, #0f172a 0%, #1e3a8a 46%, #f8fafc 46%, #ffffff 100%)",
-    padding: 16,
-    boxShadow: "0 18px 50px rgba(15,23,42,0.12)",
+  financeabilityDisclosure: {
+    borderRadius: 14,
+    border: "1px solid #dbeafe",
+    backgroundColor: "#f8fafc",
+    padding: 12,
     display: "grid",
-    gap: 14,
+    gap: 12,
   },
-  financeabilityHero: {
+  financeabilityDisclosureSummary: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr) auto",
-    gap: 16,
-    alignItems: "start",
+    gap: 12,
+    alignItems: "center",
+    cursor: "pointer",
+    listStyle: "none",
   },
-  financeabilityEyebrow: {
-    margin: 0,
-    color: "#bfdbfe",
-    fontSize: 11,
-    fontWeight: 900,
-    letterSpacing: "0.16em",
-    textTransform: "uppercase",
-  },
-  financeabilityTitle: {
-    margin: "7px 0 0",
-    maxWidth: 920,
-    color: "#fff",
-    fontSize: 28,
-    lineHeight: 1.12,
-  },
-  financeabilityCopy: {
-    margin: "9px 0 0",
-    maxWidth: 980,
-    color: "#dbeafe",
+  financeabilityDisclosureTitle: {
+    display: "block",
+    marginTop: 4,
+    color: "#0f172a",
     fontSize: 14,
-    lineHeight: 1.65,
+    lineHeight: 1.25,
+  },
+  financeabilityDisclosureCopy: {
+    display: "block",
+    marginTop: 4,
+    color: "#475569",
+    fontSize: 12,
+    lineHeight: 1.45,
   },
   financeabilityVerdictBadge: {
     borderRadius: 999,
@@ -2700,6 +2781,7 @@ const styles: Record<string, CSSProperties> = {
     display: "grid",
     gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
     gap: 10,
+    marginTop: 12,
   },
   financeabilityMetricCard: {
     minWidth: 0,
@@ -2901,6 +2983,8 @@ const styles: Record<string, CSSProperties> = {
     padding: 11,
     display: "grid",
     gap: 5,
+    color: "inherit",
+    textDecoration: "none",
   },
   headerCommandMetricLabel: {
     fontSize: 10,
@@ -2920,6 +3004,15 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 11,
     lineHeight: 1.35,
     overflowWrap: "anywhere",
+  },
+  headerCommandWarning: {
+    borderRadius: 12,
+    border: "1px solid #fed7aa",
+    backgroundColor: "#fff7ed",
+    color: "#9a3412",
+    padding: "10px 12px",
+    fontSize: 12,
+    lineHeight: 1.5,
   },
   headerCommandFootnote: {
     gridColumn: "1 / -1",

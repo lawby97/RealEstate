@@ -668,12 +668,7 @@ body {
   .listing-detail-page .listing-financeability-panel {
     padding: 12px !important;
     border-radius: 14px !important;
-    background: linear-gradient(180deg, #0f172a 0%, #1e3a8a 34%, #ffffff 34%, #ffffff 100%) !important;
-  }
-
-  .listing-detail-page .listing-financeability-hero {
-    grid-template-columns: 1fr !important;
-    gap: 10px !important;
+    background: #f8fafc !important;
   }
 
   .listing-detail-page .listing-financeability-grid,
@@ -684,6 +679,10 @@ body {
 
   .listing-detail-page .listing-financeability-lanes {
     display: none !important;
+  }
+
+  .listing-detail-page .listing-financeability-panel[open] .listing-financeability-lanes {
+    display: grid !important;
   }
 
   .listing-detail-page .strategy-selector-compare-summary-copy {
@@ -988,6 +987,21 @@ body {
     gap: 12px !important;
   }
 
+  .listing-detail-page .listing-primary-badge-row {
+    display: none !important;
+  }
+
+  .listing-detail-page .listing-address-title {
+    margin-top: 0 !important;
+    font-size: 24px !important;
+    line-height: 1.16 !important;
+  }
+
+  .listing-detail-page .listing-location {
+    margin-top: 8px !important;
+    font-size: 15px !important;
+  }
+
   .listing-detail-page .listing-header-command-panel {
     grid-template-columns: 1fr !important;
     gap: 9px !important;
@@ -1001,6 +1015,10 @@ body {
     gap: 10px !important;
   }
 
+  .listing-detail-page .listing-header-command-detail {
+    display: none !important;
+  }
+
   .listing-detail-page .listing-header-command-actions {
     display: grid !important;
     grid-template-columns: 1fr !important;
@@ -1010,6 +1028,10 @@ body {
 
   .listing-detail-page .listing-header-command-actions a {
     width: 100% !important;
+  }
+
+  .listing-detail-page .listing-header-command-secondary-action {
+    display: none !important;
   }
 
   .listing-detail-page .listing-header-command-metrics {

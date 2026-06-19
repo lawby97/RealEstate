@@ -194,9 +194,9 @@ function InvestmentPathAtAGlance(props: {
             tone={props.model?.result.cashOnCashReturn == null ? "slate" : props.model.result.cashOnCashReturn >= 0 ? "green" : "red"}
           />
           <PathMetricCard
-            label="Y1 ROI value"
+            label="Y1 modeled return"
             value={props.model ? formatCurrency(props.model.returnBridge.totalYearOneReturn) : "n/a"}
-            detail={props.model ? `${formatPercent(props.model.returnBridge.totalYearOneRoiPct)} incl. paydown/appreciation` : "Return bridge unavailable"}
+            detail={props.model ? `${formatPercent(props.model.returnBridge.totalYearOneRoiPct)} modeled ROI; includes non-cash value creation` : "Return bridge unavailable"}
             tone={props.model && props.model.returnBridge.totalYearOneReturn >= 0 ? "green" : "red"}
           />
           <PathMetricCard
