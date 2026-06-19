@@ -18,6 +18,11 @@ import {
   selectDefaultBusinessPlan,
   selectDefaultScenario,
 } from "@/lib/investment-workspace";
+import {
+  buildFinanceabilityLaneSummary,
+  type FinanceabilityLaneSummary,
+  type FinanceabilityLaneSummaryItem,
+} from "@/lib/financeability-lanes";
 import type { StrategyModel } from "@/lib/strategy-modeling";
 import { computeCashflowProjection } from "@/lib/finance";
 import { toFinanceOperatingExpenseItems } from "@/lib/operating-expenses";
@@ -117,6 +122,7 @@ export default async function ListingDetailPage({
     ...workspaceInput,
     investorContext: investorContextDefaults,
   });
+  const financeabilitySummary = buildFinanceabilityLaneSummary(initialWorkspace);
   const defaultBusinessPlanId = selectDefaultBusinessPlan(initialWorkspace);
   const defaultScenarioId = selectDefaultScenario(initialWorkspace, defaultBusinessPlanId);
   const defaultScenarioModel = initialWorkspace.scenarioModels[defaultScenarioId];
@@ -391,6 +397,8 @@ export default async function ListingDetailPage({
           </p>
         </div>
       </header>
+
+      <FinanceabilityVerdictPanel summary={financeabilitySummary} />
 
       <section
         id="listing-photos"
@@ -721,6 +729,177 @@ type DataTrustItem = {
   detail: string;
   tone: ListingActionTone;
 };
+
+function FinanceabilityVerdictPanel({ summary }: { summary: FinanceabilityLaneSummary }) {
+  const lane = summary.recommendedLane;
+  const metrics = summary.topMetrics;
+  const candidateLanes = summary.eligibleLanes.slice(0, 4);
+  const blockedCount = summary.blockedLanes.length;
+  const verdictTone = financeabilityTone(lane);
+  const primaryWarning = summary.policyWarnings[0];
+
+  return (
+    <section
+      className="listing-financeability-panel listing-detail-section-anchor"
+      aria-label="Deal and financing verdict"
+      style={styles.financeabilityPanel}
+    >
+      <div className="listing-financeability-hero" style={styles.financeabilityHero}>
+        <div style={{ minWidth: 0 }}>
+          <p style={styles.financeabilityEyebrow}>Deal + financing verdict</p>
+          <h2 style={styles.financeabilityTitle}>
+            {lane ? financeabilityHeadline(lane) : "Financing lane needs more data"}
+          </h2>
+          <p style={styles.financeabilityCopy}>
+            {lane
+              ? lane.reason
+              : "The platform could not recommend a lane from the current model. Verify source facts, rent roll, and borrower context before relying on the return model."}
+          </p>
+        </div>
+        <div style={{ ...styles.financeabilityVerdictBadge, ...financeabilityVerdictStyle(verdictTone) }}>
+          {lane ? financeabilityStatusLabel(lane) : "Needs data"}
+        </div>
+      </div>
+
+      <div className="listing-financeability-grid" style={styles.financeabilityGrid}>
+        <FinanceabilityMetricCard
+          label="Recommended lane"
+          value={lane?.label ?? "n/a"}
+          detail={lane ? financeabilityLaneDetail(lane) : "No lane selected yet."}
+          tone={verdictTone}
+        />
+        <FinanceabilityMetricCard
+          label="DSCR"
+          value={metrics?.dscr != null ? formatRatio(metrics.dscr) : "n/a"}
+          detail={metrics?.annualDebtService != null ? `${formatCurrency(metrics.annualDebtService)}/yr debt service` : "Debt service unavailable"}
+          tone={metrics?.dscr == null ? "slate" : metrics.dscr >= 1.25 ? "green" : metrics.dscr >= 1 ? "amber" : "red"}
+        />
+        <FinanceabilityMetricCard
+          label="Cashflow"
+          value={metrics?.annualCashflow != null ? `${formatCurrency(metrics.annualCashflow)}/yr` : "n/a"}
+          detail={metrics?.cashOnCashReturnPct != null ? `${formatPercent(metrics.cashOnCashReturnPct)} CoC on modeled equity` : "CoC unavailable"}
+          tone={metrics?.annualCashflow == null ? "slate" : metrics.annualCashflow >= 0 ? "green" : "red"}
+        />
+        <FinanceabilityMetricCard
+          label="Leverage"
+          value={metrics?.ltvPct != null ? `${formatPercent(metrics.ltvPct * 100)} LTV` : "n/a"}
+          detail={`${candidateLanes.length} candidate lane${candidateLanes.length === 1 ? "" : "s"} · ${blockedCount} blocked`}
+          tone="blue"
+        />
+      </div>
+
+      <div className="listing-financeability-lanes" style={styles.financeabilityLaneGrid}>
+        {candidateLanes.map((candidate) => (
+          <div key={candidate.id} style={styles.financeabilityLaneCard}>
+            <div style={styles.financeabilityLaneTop}>
+              <span style={styles.financeabilityLaneLabel}>{candidate.label}</span>
+              <span style={{ ...styles.financeabilityLanePill, ...financeabilityVerdictStyle(financeabilityTone(candidate)) }}>
+                {financeabilityStatusLabel(candidate)}
+              </span>
+            </div>
+            <p style={styles.financeabilityLaneReason}>{candidate.reason}</p>
+          </div>
+        ))}
+      </div>
+
+      {(summary.manualVerificationItems.length > 0 || primaryWarning) && (
+        <div style={styles.financeabilityProofBox}>
+          <div>
+            <p style={styles.financeabilityProofEyebrow}>Before relying on this lane</p>
+            <h3 style={styles.financeabilityProofTitle}>
+              {summary.manualVerificationItems.length > 0
+                ? "Manual lender verification is part of the workflow"
+                : primaryWarning?.title}
+            </h3>
+          </div>
+          <div style={styles.financeabilityProofList}>
+            {summary.manualVerificationItems.slice(0, 3).map((item) => (
+              <span key={item.id} style={styles.financeabilityProofChip}>
+                {item.label}
+              </span>
+            ))}
+            {primaryWarning && (
+              <span style={{ ...styles.financeabilityProofChip, borderColor: "#fed7aa", backgroundColor: "#fff7ed", color: "#9a3412" }}>
+                {primaryWarning.title}
+              </span>
+            )}
+          </div>
+          <p style={styles.financeabilityProofCopy}>
+            This is a modeled screen, not a commitment to lend. Bank and insurer rules can change; store policy source, capture date, confidence, and broker/lender confirmation before offer work.
+          </p>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function FinanceabilityMetricCard(props: {
+  label: string;
+  value: string;
+  detail: string;
+  tone: ListingActionTone;
+}) {
+  const palette = financeabilityMetricStyle(props.tone);
+
+  return (
+    <div style={styles.financeabilityMetricCard}>
+      <span style={{ ...styles.financeabilityMetricLabel, color: palette.label }}>{props.label}</span>
+      <strong style={{ ...styles.financeabilityMetricValue, color: palette.value }}>{props.value}</strong>
+      <span style={styles.financeabilityMetricDetail}>{props.detail}</span>
+    </div>
+  );
+}
+
+function financeabilityHeadline(lane: FinanceabilityLaneSummaryItem): string {
+  if (lane.id === "personal_plex_exception_5_8") {
+    return "Possible 5-8 unit personal lane, but verify in writing";
+  }
+  if (lane.status === "eligible") return "Financeable lane found for first-pass underwriting";
+  if (lane.status === "verify") return "Potential lane found, verification required";
+  return "Current model blocks this lane";
+}
+
+function financeabilityStatusLabel(lane: FinanceabilityLaneSummaryItem): string {
+  if (lane.verdict === "recommended" && lane.status === "eligible") return "Recommended";
+  if (lane.verdict === "recommended" && lane.status === "verify") return "Recommended · verify";
+  if (lane.status === "eligible") return "Candidate";
+  if (lane.status === "verify") return "Verify";
+  return "Blocked";
+}
+
+function financeabilityLaneDetail(lane: FinanceabilityLaneSummaryItem): string {
+  const missing = lane.missingInputs.length;
+  const checks = lane.manualVerificationItems.length;
+  if (lane.id === "personal_plex_exception_5_8") {
+    return "Exception path; written lender/broker confirmation required.";
+  }
+  if (missing > 0) return `${missing} missing input${missing === 1 ? "" : "s"} before confidence improves.`;
+  if (checks > 0) return `${checks} manual check${checks === 1 ? "" : "s"} before offer work.`;
+  return "Modeled from the selected strategy workspace.";
+}
+
+function financeabilityTone(lane: FinanceabilityLaneSummaryItem | null): ListingActionTone {
+  if (!lane) return "amber";
+  if (lane.status === "eligible") return "green";
+  if (lane.status === "verify") return "amber";
+  return "red";
+}
+
+function financeabilityVerdictStyle(tone: ListingActionTone): CSSProperties {
+  if (tone === "green") return { backgroundColor: "#ecfdf3", borderColor: "#bbf7d0", color: "#166534" };
+  if (tone === "amber") return { backgroundColor: "#fffbeb", borderColor: "#fde68a", color: "#92400e" };
+  if (tone === "red") return { backgroundColor: "#fef2f2", borderColor: "#fecaca", color: "#991b1b" };
+  if (tone === "blue") return { backgroundColor: "#eff6ff", borderColor: "#bfdbfe", color: "#1d4ed8" };
+  return { backgroundColor: "#f8fafc", borderColor: "#e2e8f0", color: "#475569" };
+}
+
+function financeabilityMetricStyle(tone: ListingActionTone): { label: string; value: string } {
+  if (tone === "green") return { label: "#166534", value: "#14532d" };
+  if (tone === "amber") return { label: "#92400e", value: "#78350f" };
+  if (tone === "red") return { label: "#991b1b", value: "#7f1d1d" };
+  if (tone === "blue") return { label: "#1d4ed8", value: "#1e3a8a" };
+  return { label: "#64748b", value: "#0f172a" };
+}
 
 function buildDataConfidenceSummary(
   confidence: "high" | "medium" | "low",
@@ -2470,6 +2649,165 @@ const styles: Record<string, CSSProperties> = {
     fontSize: 15,
     lineHeight: 1.75,
     color: "#475569",
+  },
+  financeabilityPanel: {
+    borderRadius: 18,
+    border: "1px solid #cbd5e1",
+    background: "linear-gradient(135deg, #0f172a 0%, #1e3a8a 46%, #f8fafc 46%, #ffffff 100%)",
+    padding: 16,
+    boxShadow: "0 18px 50px rgba(15,23,42,0.12)",
+    display: "grid",
+    gap: 14,
+  },
+  financeabilityHero: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: 16,
+    alignItems: "start",
+  },
+  financeabilityEyebrow: {
+    margin: 0,
+    color: "#bfdbfe",
+    fontSize: 11,
+    fontWeight: 900,
+    letterSpacing: "0.16em",
+    textTransform: "uppercase",
+  },
+  financeabilityTitle: {
+    margin: "7px 0 0",
+    maxWidth: 920,
+    color: "#fff",
+    fontSize: 28,
+    lineHeight: 1.12,
+  },
+  financeabilityCopy: {
+    margin: "9px 0 0",
+    maxWidth: 980,
+    color: "#dbeafe",
+    fontSize: 14,
+    lineHeight: 1.65,
+  },
+  financeabilityVerdictBadge: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderStyle: "solid",
+    padding: "8px 11px",
+    fontSize: 12,
+    fontWeight: 900,
+    whiteSpace: "nowrap",
+  },
+  financeabilityGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gap: 10,
+  },
+  financeabilityMetricCard: {
+    minWidth: 0,
+    borderRadius: 14,
+    border: "1px solid rgba(203,213,225,0.9)",
+    backgroundColor: "rgba(255,255,255,0.96)",
+    padding: 13,
+    display: "grid",
+    gap: 6,
+    boxShadow: "0 10px 24px rgba(15,23,42,0.08)",
+  },
+  financeabilityMetricLabel: {
+    fontSize: 10,
+    fontWeight: 900,
+    letterSpacing: "0.1em",
+    textTransform: "uppercase",
+  },
+  financeabilityMetricValue: {
+    fontSize: 18,
+    lineHeight: 1.15,
+    overflowWrap: "anywhere",
+  },
+  financeabilityMetricDetail: {
+    color: "#475569",
+    fontSize: 12,
+    lineHeight: 1.4,
+  },
+  financeabilityLaneGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 10,
+  },
+  financeabilityLaneCard: {
+    minWidth: 0,
+    borderRadius: 14,
+    border: "1px solid #dbeafe",
+    backgroundColor: "#eff6ff",
+    padding: 12,
+  },
+  financeabilityLaneTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 10,
+    alignItems: "flex-start",
+  },
+  financeabilityLaneLabel: {
+    color: "#0f172a",
+    fontSize: 13,
+    fontWeight: 900,
+    lineHeight: 1.25,
+  },
+  financeabilityLanePill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderStyle: "solid",
+    padding: "5px 7px",
+    fontSize: 10,
+    fontWeight: 900,
+    whiteSpace: "nowrap",
+  },
+  financeabilityLaneReason: {
+    margin: "8px 0 0",
+    color: "#475569",
+    fontSize: 12,
+    lineHeight: 1.5,
+  },
+  financeabilityProofBox: {
+    borderRadius: 14,
+    border: "1px solid #fed7aa",
+    backgroundColor: "#fff7ed",
+    padding: 13,
+    display: "grid",
+    gap: 10,
+  },
+  financeabilityProofEyebrow: {
+    margin: 0,
+    color: "#9a3412",
+    fontSize: 10,
+    fontWeight: 900,
+    letterSpacing: "0.12em",
+    textTransform: "uppercase",
+  },
+  financeabilityProofTitle: {
+    margin: "5px 0 0",
+    color: "#7c2d12",
+    fontSize: 16,
+    lineHeight: 1.25,
+  },
+  financeabilityProofList: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  financeabilityProofChip: {
+    borderRadius: 999,
+    border: "1px solid #fdba74",
+    backgroundColor: "#fff",
+    color: "#9a3412",
+    padding: "7px 9px",
+    fontSize: 12,
+    fontWeight: 800,
+    lineHeight: 1.2,
+  },
+  financeabilityProofCopy: {
+    margin: 0,
+    color: "#9a3412",
+    fontSize: 12,
+    lineHeight: 1.55,
   },
   headerCommandPanel: {
     marginTop: 18,

@@ -665,6 +665,27 @@ body {
     display: none !important;
   }
 
+  .listing-detail-page .listing-financeability-panel {
+    padding: 12px !important;
+    border-radius: 14px !important;
+    background: linear-gradient(180deg, #0f172a 0%, #1e3a8a 34%, #ffffff 34%, #ffffff 100%) !important;
+  }
+
+  .listing-detail-page .listing-financeability-hero {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+
+  .listing-detail-page .listing-financeability-grid,
+  .listing-detail-page .listing-financeability-lanes {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .listing-detail-page .listing-financeability-lanes {
+    display: none !important;
+  }
+
   .listing-detail-page .strategy-selector-compare-summary-copy {
     display: none !important;
   }
