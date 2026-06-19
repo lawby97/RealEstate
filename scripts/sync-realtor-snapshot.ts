@@ -9,8 +9,9 @@ import { resolve } from "node:path";
 import { config } from "dotenv";
 import { prisma } from "@/lib/prisma";
 import {
-  MONTREAL_ISLAND_5PLEX_FILTER,
+  MONTREAL_AREA_RESIDENTIAL_SYNC_SCOPE,
   MONTREAL_ISLAND_5PLEX_SYNC_SCOPE,
+  resolveListingSnapshotFilters,
   syncRealtorCaSnapshot,
 } from "@/lib/listing-sync";
 
@@ -65,15 +66,22 @@ async function main() {
   }
 
   const useMontrealFiveplex = hasFlag("montreal-5plex");
+  const useMontrealAreaResidential = hasFlag("montreal-area-residential");
   const syncScope = parseArg("sync-scope") ??
-    (useMontrealFiveplex ? MONTREAL_ISLAND_5PLEX_SYNC_SCOPE : "realtor_ca_snapshot");
-  const filters = useMontrealFiveplex
-    ? MONTREAL_ISLAND_5PLEX_FILTER
-    : {
+    (useMontrealAreaResidential
+      ? MONTREAL_AREA_RESIDENTIAL_SYNC_SCOPE
+      : useMontrealFiveplex
+        ? MONTREAL_ISLAND_5PLEX_SYNC_SCOPE
+        : "realtor_ca_snapshot");
+  const filters = resolveListingSnapshotFilters({
+    syncScope,
+    fallback: {
         minPrice: optionalNumber("min-price"),
         maxPrice: optionalNumber("max-price"),
         units: optionalNumber("units"),
-      };
+        excludeNonResidential: hasFlag("exclude-non-residential"),
+      },
+  });
 
   const snapshot = readSnapshot(filePath);
   const result = await syncRealtorCaSnapshot(snapshot.listings, {
@@ -82,6 +90,7 @@ async function main() {
     maxPrice: filters.maxPrice,
     units: filters.units,
     cityNames: "cityNames" in filters ? filters.cityNames : undefined,
+    excludeNonResidential: filters.excludeNonResidential,
     markMissingAsSold: hasFlag("mark-missing-sold"),
     runAt: snapshot.capturedAt,
   });

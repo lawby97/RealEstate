@@ -5,6 +5,7 @@ import { findBestListingMatch } from "@/lib/listing-match";
 import { mapRealtorCaListing, type RealtorCaListing } from "@/lib/realtor-ca-api";
 
 export const MONTREAL_ISLAND_5PLEX_SYNC_SCOPE = "montreal_island_5plex_600k_1300k";
+export const MONTREAL_AREA_RESIDENTIAL_SYNC_SCOPE = "montreal_area_residential_250k_1300k";
 
 export const MONTREAL_ISLAND_5PLEX_FILTER = {
   minPrice: 600_000,
@@ -35,6 +36,98 @@ export const MONTREAL_ISLAND_5PLEX_FILTER = {
   ],
 } as const;
 
+export const GREATER_MONTREAL_CITY_NAMES = [
+  "Montreal",
+  "Montréal",
+  "Ahuntsic-Cartierville",
+  "Anjou",
+  "Baie-D'Urfe",
+  "Baie-D'Urfé",
+  "Beaconsfield",
+  "Cote-Saint-Luc",
+  "Côte-Saint-Luc",
+  "Dollard-des-Ormeaux",
+  "Dorval",
+  "Hampstead",
+  "Kirkland",
+  "L'Ile-Dorval",
+  "L'Île-Dorval",
+  "Mont-Royal",
+  "Mount Royal",
+  "Montreal East",
+  "Montréal-Est",
+  "Montreal West",
+  "Montréal-Ouest",
+  "Outremont",
+  "Pierrefonds-Roxboro",
+  "Pointe-Claire",
+  "Sainte-Anne-de-Bellevue",
+  "Senneville",
+  "Verdun",
+  "Westmount",
+  "Laval",
+  "Longueuil",
+  "Boucherville",
+  "Brossard",
+  "Saint-Bruno-de-Montarville",
+  "Saint-Lambert",
+  "Saint-Hubert",
+  "Greenfield Park",
+  "Beloeil",
+  "Carignan",
+  "Chambly",
+  "McMasterville",
+  "Mont-Saint-Hilaire",
+  "Saint-Basile-le-Grand",
+  "Saint-Jean-sur-Richelieu",
+  "Saint-Constant",
+  "Delson",
+  "La Prairie",
+  "Candiac",
+  "Sainte-Catherine",
+  "Chateauguay",
+  "Châteauguay",
+  "Mercier",
+  "Varennes",
+  "Vercheres",
+  "Verchères",
+  "Contrecoeur",
+  "Repentigny",
+  "Charlemagne",
+  "L'Assomption",
+  "Terrebonne",
+  "Mascouche",
+  "Boisbriand",
+  "Blainville",
+  "Bois-des-Filion",
+  "Lorraine",
+  "Rosemere",
+  "Rosemère",
+  "Sainte-Therese",
+  "Sainte-Thérèse",
+  "Saint-Eustache",
+  "Deux-Montagnes",
+  "Pointe-Calumet",
+  "Saint-Joseph-du-Lac",
+  "Sainte-Marthe-sur-le-Lac",
+  "Oka",
+  "Vaudreuil-Dorion",
+  "Hudson",
+  "L'Ile-Perrot",
+  "L'Île-Perrot",
+  "Notre-Dame-de-l'Ile-Perrot",
+  "Notre-Dame-de-l'Île-Perrot",
+  "Pincourt",
+  "Terrasse-Vaudreuil",
+] as const;
+
+export const MONTREAL_AREA_RESIDENTIAL_FILTER = {
+  minPrice: 250_000,
+  maxPrice: 1_300_000,
+  cityNames: GREATER_MONTREAL_CITY_NAMES,
+  excludeNonResidential: true,
+} as const;
+
 export type MappedListing = ReturnType<typeof mapRealtorCaListing> | ReturnType<typeof mapCentrisListing>;
 
 export type ListingSnapshotFilters = {
@@ -42,6 +135,7 @@ export type ListingSnapshotFilters = {
   maxPrice?: number;
   units?: number;
   cityNames?: readonly string[];
+  excludeNonResidential?: boolean;
 };
 
 export type ListingSnapshotSyncOptions = ListingSnapshotFilters & {
@@ -66,6 +160,17 @@ export type ListingSnapshotSyncResult = {
   evaluated: number;
   filters: ListingSnapshotFilters;
 };
+
+export function resolveListingSnapshotFilters(params: {
+  syncScope?: string | null;
+  captureScope?: string | null;
+  fallback?: ListingSnapshotFilters;
+}): ListingSnapshotFilters {
+  const scopes = [params.syncScope, params.captureScope].filter(Boolean);
+  if (scopes.includes(MONTREAL_AREA_RESIDENTIAL_SYNC_SCOPE)) return MONTREAL_AREA_RESIDENTIAL_FILTER;
+  if (scopes.includes(MONTREAL_ISLAND_5PLEX_SYNC_SCOPE)) return MONTREAL_ISLAND_5PLEX_FILTER;
+  return params.fallback ?? {};
+}
 
 type CanonicalListingMatch = {
   id: string;
@@ -101,7 +206,54 @@ export function passesListingSnapshotFilters(
     const allowed = new Set(filters.cityNames.map(normalizeCityName));
     if (!allowed.has(normalizeCityName(listing.city))) return false;
   }
+  if (filters.excludeNonResidential && isExcludedResidentialCaptureListing(listing)) return false;
   return true;
+}
+
+export function isExcludedResidentialCaptureListing(listing: MappedListing): boolean {
+  const propertyType = listing.propertyType.toLowerCase();
+  const description = (listing.description ?? "").toLowerCase();
+  const listingUrl = (listing.listingUrl ?? "").toLowerCase();
+  const text = `${propertyType} ${description} ${listingUrl}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  const excludedTypePatterns = [
+    /\bvacant\s+land\b/,
+    /\bland\b/,
+    /\blot\b/,
+    /\bterrain\b/,
+    /\bmobile\s+home\b/,
+    /\bmaison\s+mobile\b/,
+    /\bmanufactured\s+home\b/,
+    /\bhobby\s+farm\b/,
+    /\bfarmette\b/,
+    /\bfermette\b/,
+    /\bfarm\b/,
+    /\bagricultur(?:al|e)\b/,
+    /\branch\b/,
+  ];
+  if (excludedTypePatterns.some((pattern) => pattern.test(propertyType))) return true;
+
+  const excludedTextPatterns = [
+    /\bvacant\s+land\b/,
+    /\bland\s+for\s+sale\b/,
+    /\bterrain\s+(?:a|à)\s+vendre\b/,
+    /\bterrain\s+vacant\b/,
+    /\b(?:building|residential|vacant)\s+lot\b/,
+    /\blot\s+for\s+sale\b/,
+    /\bmobile\s+home\b/,
+    /\bmaison\s+mobile\b/,
+    /\bmanufactured\s+home\b/,
+    /\bhobby\s+farm\b/,
+    /\bfarmette\b/,
+    /\bfermette\b/,
+    /\bfarm\s+for\s+sale\b/,
+    /\bagricultural\s+(?:property|land|zoning|use)\b/,
+    /\branch\s+for\s+sale\b/,
+  ];
+
+  return excludedTextPatterns.some((pattern) => pattern.test(text));
 }
 
 async function upsertEvaluation(listing: {
@@ -367,6 +519,7 @@ async function syncMappedListingSnapshot(
     maxPrice: options.maxPrice,
     units: options.units,
     cityNames: options.cityNames,
+    excludeNonResidential: options.excludeNonResidential,
   };
   const sourceMappedListings = mappedListings.map((listing) => ({
     ...listing,

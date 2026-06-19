@@ -5,8 +5,8 @@ import {
   type RealtorCaListing,
 } from "@/lib/realtor-ca-api";
 import {
-  MONTREAL_ISLAND_5PLEX_FILTER,
-  MONTREAL_ISLAND_5PLEX_SYNC_SCOPE,
+  passesListingSnapshotFilters,
+  resolveListingSnapshotFilters,
   syncRealtorCaSnapshot,
 } from "@/lib/listing-sync";
 
@@ -43,16 +43,18 @@ export async function POST(req: NextRequest) {
     const maxBedrooms = searchParams.get("maxBedrooms") ? parseInt(searchParams.get("maxBedrooms")!, 10) : undefined;
     const buildingTypeId = searchParams.get("buildingTypeId") ? parseInt(searchParams.get("buildingTypeId")!, 10) : undefined;
     const syncScope = searchParams.get("syncScope") ?? searchParams.get("captureScope") ?? "realtor_ca_direct";
-    const useMontrealFiveplexDefaults =
-      syncScope === MONTREAL_ISLAND_5PLEX_SYNC_SCOPE ||
-      searchParams.get("captureScope") === MONTREAL_ISLAND_5PLEX_SYNC_SCOPE;
-    const filters = useMontrealFiveplexDefaults
-      ? MONTREAL_ISLAND_5PLEX_FILTER
-      : {
+    const filters = resolveListingSnapshotFilters({
+      syncScope,
+      captureScope: searchParams.get("captureScope"),
+      fallback: {
           minPrice,
           maxPrice,
           units: searchParams.get("units") ? parseInt(searchParams.get("units")!, 10) : undefined,
-        };
+          excludeNonResidential:
+            searchParams.get("excludeNonResidential") === "1" ||
+            searchParams.get("excludeNonResidential") === "true",
+        },
+    });
     const markMissingAsSold =
       searchParams.get("markMissingAsSold") === "1" ||
       searchParams.get("markMissingAsSold") === "true";
@@ -86,12 +88,7 @@ export async function POST(req: NextRequest) {
     if (preview) {
       const mapped = (rawListings as RealtorCaListing[])
         .map((raw) => mapRealtorCaListing(raw))
-        .filter((listing) => {
-          if (filters.minPrice != null && listing.price < filters.minPrice) return false;
-          if (filters.maxPrice != null && listing.price > filters.maxPrice) return false;
-          if (filters.units != null && listing.units !== filters.units) return false;
-          return true;
-        });
+        .filter((listing) => passesListingSnapshotFilters(listing, filters));
       return Response.json({
         ok: true,
         source: "realtor_ca",
@@ -108,6 +105,7 @@ export async function POST(req: NextRequest) {
       maxPrice: filters.maxPrice,
       units: filters.units,
       cityNames: "cityNames" in filters ? filters.cityNames : undefined,
+      excludeNonResidential: filters.excludeNonResidential,
       markMissingAsSold,
     });
 

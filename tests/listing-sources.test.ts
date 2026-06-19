@@ -4,8 +4,11 @@ import { mapCentrisListing } from "../src/lib/centris-api";
 import { findBestListingMatch } from "../src/lib/listing-match";
 import { computeListingCashOnCashRoi, sortByCashOnCashRoi } from "../src/lib/listing-roi";
 import {
+  MONTREAL_AREA_RESIDENTIAL_FILTER,
+  MONTREAL_AREA_RESIDENTIAL_SYNC_SCOPE,
   MONTREAL_ISLAND_5PLEX_FILTER,
   passesListingSnapshotFilters,
+  resolveListingSnapshotFilters,
 } from "../src/lib/listing-sync";
 import {
   normalizePropertyTypeOption,
@@ -59,6 +62,108 @@ test("Montreal 5-plex scope accepts exact 5-unit Centris listings only", () => {
 
   assert.equal(passesListingSnapshotFilters(fivePlex, MONTREAL_ISLAND_5PLEX_FILTER), true);
   assert.equal(passesListingSnapshotFilters(fourPlex, MONTREAL_ISLAND_5PLEX_FILTER), false);
+});
+
+test("Montreal area residential scope accepts broad residential inventory without unit restriction", () => {
+  const condo = mapCentrisListing({
+    centrisId: "30000001",
+    title: "Condo for sale",
+    address: "1200 Rue Peel",
+    city: "Montreal",
+    price: 425_000,
+    units: 1,
+    propertyType: "Condo",
+  });
+  const fourplex = mapCentrisListing({
+    centrisId: "30000002",
+    title: "Quadruplex",
+    address: "10 Rue Saint-Charles",
+    city: "Longueuil",
+    price: 950_000,
+    units: 4,
+  });
+  const fiveplex = mapCentrisListing({
+    centrisId: "30000003",
+    title: "Quintuplex",
+    address: "20 Rue Principale",
+    city: "Laval",
+    price: 1_250_000,
+    units: 5,
+  });
+
+  assert.equal(passesListingSnapshotFilters(condo, MONTREAL_AREA_RESIDENTIAL_FILTER), true);
+  assert.equal(passesListingSnapshotFilters(fourplex, MONTREAL_AREA_RESIDENTIAL_FILTER), true);
+  assert.equal(passesListingSnapshotFilters(fiveplex, MONTREAL_AREA_RESIDENTIAL_FILTER), true);
+});
+
+test("Montreal area residential scope enforces price, geography, and non-residential exclusions", () => {
+  const belowPrice = mapCentrisListing({
+    centrisId: "30000004",
+    title: "House",
+    address: "22 Rue Test",
+    city: "Montreal",
+    price: 249_000,
+  });
+  const abovePrice = mapCentrisListing({
+    centrisId: "30000005",
+    title: "House",
+    address: "24 Rue Test",
+    city: "Montreal",
+    price: 1_300_001,
+  });
+  const outsideArea = mapCentrisListing({
+    centrisId: "30000006",
+    title: "House",
+    address: "26 Rue Test",
+    city: "Quebec",
+    price: 750_000,
+  });
+  const vacantLand = mapCentrisListing({
+    centrisId: "30000007",
+    title: "Vacant Land",
+    address: "28 Rue Test",
+    city: "Montreal",
+    price: 350_000,
+    propertyType: "Vacant Land",
+  });
+  const mobileHome = mapCentrisListing({
+    centrisId: "30000008",
+    title: "Maison mobile",
+    address: "30 Rue Test",
+    city: "Laval",
+    price: 300_000,
+    description: "Maison mobile a vendre",
+  });
+  const hobbyFarm = mapCentrisListing({
+    centrisId: "30000009",
+    title: "Fermette",
+    address: "32 Rue Test",
+    city: "Longueuil",
+    price: 900_000,
+    description: "Fermette avec terres agricoles",
+  });
+
+  assert.equal(passesListingSnapshotFilters(belowPrice, MONTREAL_AREA_RESIDENTIAL_FILTER), false);
+  assert.equal(passesListingSnapshotFilters(abovePrice, MONTREAL_AREA_RESIDENTIAL_FILTER), false);
+  assert.equal(passesListingSnapshotFilters(outsideArea, MONTREAL_AREA_RESIDENTIAL_FILTER), false);
+  assert.equal(passesListingSnapshotFilters(vacantLand, MONTREAL_AREA_RESIDENTIAL_FILTER), false);
+  assert.equal(passesListingSnapshotFilters(mobileHome, MONTREAL_AREA_RESIDENTIAL_FILTER), false);
+  assert.equal(passesListingSnapshotFilters(hobbyFarm, MONTREAL_AREA_RESIDENTIAL_FILTER), false);
+});
+
+test("snapshot scope resolver applies Montreal area residential defaults by sync or capture scope", () => {
+  assert.deepEqual(
+    resolveListingSnapshotFilters({ syncScope: MONTREAL_AREA_RESIDENTIAL_SYNC_SCOPE }),
+    MONTREAL_AREA_RESIDENTIAL_FILTER
+  );
+  assert.deepEqual(
+    resolveListingSnapshotFilters({ captureScope: MONTREAL_AREA_RESIDENTIAL_SYNC_SCOPE }),
+    MONTREAL_AREA_RESIDENTIAL_FILTER
+  );
+  assert.deepEqual(
+    resolveListingSnapshotFilters({ fallback: { minPrice: 1, maxPrice: 2 } }),
+    { minPrice: 1, maxPrice: 2 }
+  );
 });
 
 test("Centris and Realtor addresses match one canonical listing", () => {

@@ -1,8 +1,7 @@
 import { NextRequest } from "next/server";
 import type { RealtorCaListing } from "@/lib/realtor-ca-api";
 import {
-  MONTREAL_ISLAND_5PLEX_FILTER,
-  MONTREAL_ISLAND_5PLEX_SYNC_SCOPE,
+  resolveListingSnapshotFilters,
   syncRealtorCaSnapshot,
 } from "@/lib/listing-sync";
 
@@ -44,18 +43,20 @@ export async function POST(req: NextRequest) {
       searchParams.get("syncScope") ??
       "realtor_ca_manual"
     );
-    const useMontrealFiveplexDefaults =
-      syncScope === MONTREAL_ISLAND_5PLEX_SYNC_SCOPE ||
-      body.captureScope === MONTREAL_ISLAND_5PLEX_SYNC_SCOPE ||
-      searchParams.get("captureScope") === MONTREAL_ISLAND_5PLEX_SYNC_SCOPE;
-    const filters = useMontrealFiveplexDefaults
-      ? MONTREAL_ISLAND_5PLEX_FILTER
-      : {
+    const filters = resolveListingSnapshotFilters({
+      syncScope,
+      captureScope: String(body.captureScope ?? searchParams.get("captureScope") ?? ""),
+      fallback: {
           minPrice: optionalNumber(body.minPrice ?? searchParams.get("minPrice")),
           maxPrice: optionalNumber(body.maxPrice ?? searchParams.get("maxPrice")),
           units: optionalNumber(body.units ?? searchParams.get("units")),
           cityNames: Array.isArray(body.cityNames) ? body.cityNames.map(String) : undefined,
-        };
+          excludeNonResidential:
+            body.excludeNonResidential === true ||
+            searchParams.get("excludeNonResidential") === "1" ||
+            searchParams.get("excludeNonResidential") === "true",
+        },
+    });
     const markMissingAsSold =
       body.markMissingAsSold === true ||
       searchParams.get("markMissingAsSold") === "1" ||
@@ -78,6 +79,7 @@ export async function POST(req: NextRequest) {
       maxPrice: filters.maxPrice,
       units: filters.units,
       cityNames: filters.cityNames,
+      excludeNonResidential: filters.excludeNonResidential,
       markMissingAsSold,
       runAt: optionalDate(body.capturedAt ?? searchParams.get("capturedAt")),
     });
